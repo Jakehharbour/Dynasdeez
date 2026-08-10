@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getLeagueRosters, getLeagueUsers, getNFLState, getAllLeagueSeasons } from '@/lib/api';
+import { 
+  getLeagueRosters, 
+  getLeagueUsers, 
+  getNFLState, 
+  getAllLeagueSeasons, 
+  getLeagueInfo,
+  getAllLinkedLeagueIds 
+} from '@/lib/api';
 import { getCurrentLeagueId, INITIAL_LEAGUE_ID } from '@/config/league';
 import {
   getPlayersDirectory,
@@ -12,14 +19,14 @@ import {
 export const dynamic = 'force-dynamic';
 
 export interface RosterTeam {
-  rosterId:  number;
-  userId:    string;
-  teamName:  string;
+  rosterId:    number;
+  userId:      string;
+  teamName:    string;
   managerName: string;
-  avatar:    string;
-  record:    { wins: number; losses: number; ties: number };
-  starters:  PlayerCard[];
-  bench:     PlayerCard[];
+  avatar:      string;
+  record:      { wins: number; losses: number; ties: number };
+  starters:    PlayerCard[];
+  bench:       PlayerCard[];
 }
 
 export interface RostersResponse {
@@ -36,21 +43,35 @@ export async function GET(request: Request) {
   const requested = new URL(request.url).searchParams.get('season');
 
   try {
-    // The roster shown is always the current one — the season picker changes
-    // which year's production is laid over those players, it does not travel
-    // back to that year's roster.
-    const leagueId = await getCurrentLeagueId();
+    const currentLeagueId = await getCurrentLeagueId();
     const [nflState, seasons] = await Promise.all([
       getNFLState(),
-      getAllLeagueSeasons(leagueId),
+      getAllLeagueSeasons(currentLeagueId),
     ]);
 
     const defaultSeason = await resolveStatsSeason(nflState?.season ?? String(new Date().getFullYear()));
     const statsSeason = requested && seasons.includes(requested) ? requested : defaultSeason;
 
+    // 1. Traverse linked leagues to find the specific leagueId for statsSeason
+    let activeLeagueId = currentLeagueId;
+    const linkedIds = await getAllLinkedLeagueIds(currentLeagueId);
+    
+    for (const id of linkedIds) {
+      try {
+        const info = await getLeagueInfo(id);
+        if (info && String(info.season) === String(statsSeason)) {
+          activeLeagueId = id;
+          break;
+        }
+      } catch (e) {
+        console.warn(`Failed to inspect league ${id}`, e);
+      }
+    }
+
+    // 2. Fetch rosters and users using the season-specific activeLeagueId
     const [rosters, users, players, stats] = await Promise.all([
-      getLeagueRosters(leagueId),
-      getLeagueUsers(leagueId),
+      getLeagueRosters(activeLeagueId),
+      getLeagueUsers(activeLeagueId),
       getPlayersDirectory(),
       getSeasonStats(statsSeason),
     ]);
@@ -64,7 +85,7 @@ export async function GET(request: Request) {
       const allIds = (r.players ?? []).filter(Boolean);
 
       const toCard = (id: string) => buildPlayerCard(id, players, stats);
-      // Sort the bench by production so the useful depth floats to the top.
+
       const bench = allIds
         .filter((id: string) => !starterSet.has(id))
         .map(toCard)

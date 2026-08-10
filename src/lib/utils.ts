@@ -5,40 +5,34 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function getDefaultSeason(seasons: string[], draftDate?: string | null): string {
+export function getDefaultSeason(
+  seasons: string[], 
+  hasCurrentSeasonData: boolean = false
+): string {
   if (!seasons.length) return new Date().getFullYear().toString();
-  
-  // Always prefer the current active season (most recent season in the list)
-  // This ensures we start with the current active season instead of completed seasons
-  const currentActiveSeason = Math.max(...seasons.map(Number)).toString();
-  
-  // If no draft date is set, return the current active season
-  if (!draftDate) {
-    return currentActiveSeason;
+
+  // Sort seasons descending (e.g., ['2026', '2025', '2024', '2023'])
+  const sortedSeasons = seasons
+    .map(Number)
+    .filter((s) => !isNaN(s))
+    .sort((a, b) => b - a);
+
+  const highestSeason = sortedSeasons[0];
+
+  // If 2026 has active games/matchups generated, default to it immediately
+  if (hasCurrentSeasonData) {
+    return highestSeason.toString();
   }
-  
-  // If draft date is provided, still prefer the current active season
-  // The draft date logic was causing us to default to old seasons
-  try {
-    const draft = new Date(Number(draftDate));
-    if (!isNaN(draft.getTime())) {
-      const now = new Date();
-      const monthBeforeDraft = new Date(draft);
-      monthBeforeDraft.setMonth(draft.getMonth() - 1);
-      
-      // Always show the current active season regardless of draft timing
-      return currentActiveSeason;
-    }
-  } catch (e) {
-    console.warn('Invalid draft date provided:', draftDate);
-  }
-  
-  // Default to current active season
-  return currentActiveSeason;
+
+  // Otherwise, default to the most recent completed/playable season during offseason
+  const currentYear = new Date().getFullYear();
+  const completedSeason = sortedSeasons.find((s) => s < currentYear);
+
+  return (completedSeason || highestSeason).toString();
 }
 
 export function getDefaultValue<T>(value: T | null | undefined, defaultValue: T): T {
-  if (value === null || value === undefined || Number.isNaN(value)) {
+  if (value === null || value === undefined || Number.isNaN(value as number)) {
     return defaultValue;
   }
   return value;
@@ -57,4 +51,4 @@ export function calculateWinPercentage(wins: number, losses: number, ties: numbe
 
 export function formatRecord(wins: number, losses: number, ties: number = 0): string {
   return `${wins}-${losses}${ties > 0 ? `-${ties}` : ''}`;
-} 
+}
