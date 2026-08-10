@@ -1,27 +1,24 @@
 /**
- * Server-only: theme persistence (Redis in prod, JSON file in dev).
+ * Server-only: theme persistence (Upstash Redis in prod, JSON file in dev).
  * Do NOT import this in client components. Import themeConfig.ts instead.
  */
 import { promises as fs } from 'fs';
 import path from 'path';
+import { Redis } from '@upstash/redis';
 import { type ThemeConfig, type FontPairKey, DEFAULT_THEME, fontPairs, accentPresets } from './themeConfig';
 
-// Re-export everything from themeConfig for convenience (server-side callers)
+// Re-export everything from themeConfig for convenience
 export { DEFAULT_THEME, fontPairs, accentPresets };
 export type { ThemeConfig, FontPairKey };
 
 // ─── Storage backend ───────────────────────────────────────────────
 
-let redis: any = null;
-try {
-  const redisUrl = process.env.REDIS_URL;
-  if ((process.env.VERCEL || redisUrl) && redisUrl && !redisUrl.includes('your-redis')) {
-    const { createClient } = require('redis');
-    redis = createClient({ url: redisUrl });
-    redis.on('error', () => { redis = null; });
-  }
-} catch {
-  // fall back to file storage
+const url = process.env.dynasdeezstorage_KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const token = process.env.dynasdeezstorage_KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+
+let redis: Redis | null = null;
+if (url && token) {
+  redis = new Redis({ url, token });
 }
 
 const DATA_DIR   = path.join(process.cwd(), 'data');
@@ -33,20 +30,11 @@ async function ensureDataDir() {
   catch { await fs.mkdir(DATA_DIR, { recursive: true }); }
 }
 
-// In-memory cache. Deliberately short-lived: getTheme() runs several times per
-// render (root layout, ThemeInjector, Footer), and this collapses those into a
-// single read without letting an admin save go unnoticed.
-//
-// It used to be 5 minutes, which is why saved changes appeared not to apply —
-// Next bundles route handlers and server components separately, so saveTheme()
-// busting *its* module instance's cache never reached the render path's copy,
-// and noStore() doesn't touch a module-level cache.
 let memCache: ThemeConfig | null = null;
 let memCacheExpiry = 0;
 let memCacheMtimeMs = 0;
 const MEM_TTL = 1000; // 1s
 
-/** 0 when the file doesn't exist yet (or on the Redis backend). */
 async function themeFileMtime(): Promise<number> {
   try {
     return (await fs.stat(THEME_FILE)).mtimeMs;
@@ -55,37 +43,20 @@ async function themeFileMtime(): Promise<number> {
   }
 }
 
-async function connectRedis(): Promise<void> {
-  // Hard 2-second timeout so a slow/misconfigured Redis never blocks page loads
-  await Promise.race([
-    redis.connect(),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Redis connect timeout')), 2000)
-    ),
-  ]);
-}
-
 export async function getTheme(): Promise<ThemeConfig> {
   if (memCache && Date.now() < memCacheExpiry) {
-    // On the file backend an mtime change proves another process or bundle
-    // wrote a new theme, so the cache is stale no matter how fresh the TTL is.
     if (redis || (await themeFileMtime()) === memCacheMtimeMs) return memCache;
   }
 
   try {
-    if (redis) {
-      try {
-        if (!redis.isOpen) await connectRedis();
-      } catch {
-        redis = null; // unreachable or unauthenticated, fall through
-      }
-    }
-
     let theme: ThemeConfig | null = null;
 
     if (redis) {
-      const raw = await redis.get(REDIS_KEY);
-      if (raw) theme = { ...DEFAULT_THEME, ...JSON.parse(raw) };
+      const raw = await redis.get<ThemeConfig>(REDIS_KEY);
+      if (raw) {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        theme = { ...DEFAULT_THEME, ...parsed };
+      }
     } else {
       await ensureDataDir();
       try {
@@ -109,8 +80,7 @@ export async function saveTheme(theme: Partial<ThemeConfig>): Promise<ThemeConfi
   const next: ThemeConfig = { ...current, ...theme };
   try {
     if (redis) {
-      if (!redis.isOpen) await connectRedis();
-      await redis.set(REDIS_KEY, JSON.stringify(next));
+      await redis.set(REDIS_KEY, next);
     } else {
       await ensureDataDir();
       await fs.writeFile(THEME_FILE, JSON.stringify(next, null, 2));
@@ -118,6 +88,7 @@ export async function saveTheme(theme: Partial<ThemeConfig>): Promise<ThemeConfi
   } catch (err) {
     console.error('themeStorage.saveTheme error:', err);
   }
+
   // Bust in-memory cache so the new theme is served immediately
   memCache = next;
   memCacheExpiry = Date.now() + MEM_TTL;
