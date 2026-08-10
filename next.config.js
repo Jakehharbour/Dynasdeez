@@ -5,13 +5,20 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'sleepercdn.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'a.espncdn.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 's.espncdn.com',
+        pathname: '/**',
       },
     ],
-    domains: ['a.espncdn.com', 's.espncdn.com'],
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
   },
 };
 
-module.exports = nextConfig; 
+module.exports = nextConfig;
