@@ -208,56 +208,61 @@ export default function AppearancePage() {
     }
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setAuthError('');
-    try {
-      const res = await fetch('/api/admin/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-      if (res.ok) {
-        setAuthed(true);
-        await loadTheme(password);
-      } else {
-        setAuthError('Incorrect password.');
-      }
-    } catch {
-      setAuthError('Connection error. Try again.');
-    } finally {
-      setLoading(false);
+const handleLogin = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setLoading(true);
+  setAuthError('');
+  try {
+    const res = await fetch('/api/admin/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (res.ok) {
+      setAuthed(true);
+      // Stores password in session so it stays saved
+      sessionStorage.setItem('admin_password', password); 
+      await loadTheme(password);
+    } else {
+      setAuthError('Incorrect password.');
     }
-  };
+  } catch {
+    setAuthError('Connection error. Try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSave = async () => {
-    setLoading(true);
-    setSaveError('');
-    try {
-      const res = await fetch('/api/admin/theme', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-password': password,
-        },
-        body: JSON.stringify(theme),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setSaveError(body.error ?? `Save failed (${res.status})`);
-        return;
-      }
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-      // Re-run server components (ThemeInjector) so the new theme is applied immediately
-      router.refresh();
-    } catch {
-      setSaveError('Network error. Check your connection and try again.');
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  setSaveError('');
+  
+  // Checks session storage so password isn't lost
+  const activePassword = password || sessionStorage.getItem('admin_password') || '';
+
+  try {
+    const res = await fetch('/api/admin/theme', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-password': activePassword,
+      },
+      body: JSON.stringify(theme),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setSaveError(body.error ?? `Save failed (${res.status})`);
+      return;
     }
-  };
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+    router.refresh();
+  } catch {
+    setSaveError('Network error. Check your connection and try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleReset = async () => {
     setResetting(true);
