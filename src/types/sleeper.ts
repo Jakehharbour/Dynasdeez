@@ -72,7 +72,7 @@ export interface SleeperLeague {
     daily_waivers: number;
     bench_slots: number;
     trade_deadline: number;
-    median_wins?: boolean; // Median games enabled
+    median_wins?: boolean;
   };
   season: string;
   scoring_settings: Record<string, number>;
@@ -106,4 +106,48 @@ export interface SleeperPlayer {
   injury_status: string | null;
   number: string;
   fantasy_positions: string[];
-} 
+}
+
+// ─── Fetching Functions ──────────────────────────────────────────────────────
+
+/**
+ * Fetch fresh user profiles directly from Sleeper.
+ * Uses { revalidate: 60 } so Next.js updates the cache every minute.
+ */
+export async function getSleeperUsers(leagueId: string): Promise<SleeperUser[]> {
+  const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`, {
+    next: { revalidate: 60 }, // Rechecks Sleeper for updated names every 60s
+  });
+
+  if (!res.ok) throw new Error('Failed to fetch Sleeper users');
+  return res.json();
+}
+
+/**
+ * Fetch rosters and merge them with fresh Sleeper user profile data.
+ */
+export async function getFreshLeagueTeams(leagueId: string) {
+  const [rostersRes, users] = await Promise.all([
+    fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`, { next: { revalidate: 60 } }),
+    getSleeperUsers(leagueId),
+  ]);
+
+  if (!rostersRes.ok) throw new Error('Failed to fetch Sleeper rosters');
+  const rosters: SleeperRoster[] = await rostersRes.json();
+
+  const userMap = new Map<string, SleeperUser>();
+  users.forEach((u) => userMap.set(u.user_id, u));
+
+  return rosters.map((roster) => {
+    const user = userMap.get(roster.owner_id);
+    return {
+      rosterId: roster.roster_id,
+      ownerId: roster.owner_id,
+      // Pulls updated custom team name, or falls back to updated username
+      teamName: user?.metadata?.team_name || user?.display_name || `Team ${roster.roster_id}`,
+      username: user?.display_name || user?.username || `User_${roster.roster_id}`,
+      avatar: user?.avatar || null,
+      roster,
+    };
+  });
+}

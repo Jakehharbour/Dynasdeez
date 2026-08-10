@@ -1,11 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import MatchupDetailModal, { type MatchupTarget } from '@/components/matchup/MatchupDetailModal';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import Avatar from '@/components/ui/Avatar';
-import { getLeagueInfo, getLeagueRosters, getLeagueUsers, getLeagueMatchups, getNFLState, getAllLeagueSeasons, getAllLinkedLeagueIds } from '@/lib/api';
+import { 
+  getLeagueInfo, 
+  getLeagueRosters, 
+  getLeagueUsers, 
+  getLeagueMatchups, 
+  getNFLState, 
+  getAllLeagueSeasons, 
+  getAllLinkedLeagueIds 
+} from '@/lib/api';
 import { INITIAL_LEAGUE_ID, getCurrentLeagueId } from '@/config/league';
 import { ErrorMessage } from '@/components/ui/ErrorMessage';
 import { LoadingPage, LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -35,8 +43,9 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
   const [seasonRosters, setSeasonRosters] = useState<any[]>([]);
   const [loadingSeasonData, setLoadingSeasonData] = useState(false);
 
+  // Initial setup load
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchInitialData = async () => {
       if (!INITIAL_LEAGUE_ID || INITIAL_LEAGUE_ID === 'YOUR_LEAGUE_ID') {
         setError('Please set your Sleeper league ID in the .env.local file.');
         setLoading(false);
@@ -46,18 +55,15 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
       try {
         const leagueId = await getCurrentLeagueId();
 
-        const [leagueData, allSeasons] = await Promise.all([
+        const [leagueData, allSeasons, usersData, rostersData, nflStateData] = await Promise.all([
           getLeagueInfo(leagueId),
           getAllLeagueSeasons(leagueId),
-        ]);
-
-        const defaultSeason = getDefaultSeason(allSeasons, leagueData.draft_id);
-
-        const [usersData, rostersData, nflStateData] = await Promise.all([
           getLeagueUsers(leagueId),
           getLeagueRosters(leagueId),
           getNFLState(),
         ]);
+
+        const defaultSeason = getDefaultSeason(allSeasons, leagueData.draft_id);
 
         setLeague(leagueData);
         setUsers(usersData);
@@ -67,103 +73,91 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
         setSelectedSeason(defaultSeason);
         setSeasonRosters(rostersData);
 
+        // Determine default week
         if (!initialWeek) {
-          const currentWeek = nflStateData?.season_type === 'regular'
-            ? nflStateData.week
-            : 1;
+          const currentWeek = nflStateData?.season_type === 'regular' ? nflStateData.week : 1;
           setSelectedWeek(leagueData.status === 'in_season' ? currentWeek : 1);
         }
-
-        const matchupsData = await getLeagueMatchups(leagueId, selectedWeek);
-        setMatchups(matchupsData);
-
-      } catch (error) {
-        console.error('Failed to fetch data:', error);
-        setError(error instanceof Error ? error.message : 'Failed to fetch league data');
+      } catch (err) {
+        console.error('Failed to fetch initial data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to fetch league data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchInitialData();
   }, [initialWeek]);
 
+  // Fetch season & week matchups whenever season or week updates
   useEffect(() => {
-    const fetchSeasonData = async () => {
+    const fetchSeasonAndMatchupsData = async () => {
       if (!selectedSeason || !league) return;
 
       setLoadingSeasonData(true);
       try {
-        const linkedLeagues = await getAllLinkedLeagueIds(league.league_id);
+        let targetLeagueId = league.league_id;
 
-        const seasonLeagueId = await (async () => {
-          for (const leagueId of linkedLeagues) {
-            const leagueInfo = await getLeagueInfo(leagueId);
-            if (leagueInfo.season === selectedSeason) {
-              return leagueId;
+        // Only search linked leagues if viewing a historical season
+        if (selectedSeason !== league.season) {
+          const linkedLeagues = await getAllLinkedLeagueIds(league.league_id);
+          for (const id of linkedLeagues) {
+            const info = await getLeagueInfo(id);
+            if (info.season === selectedSeason) {
+              targetLeagueId = id;
+              break;
             }
           }
-          return league.league_id;
-        })();
+        }
 
         const [seasonRostersData, matchupsData] = await Promise.all([
-          getLeagueRosters(seasonLeagueId),
-          getLeagueMatchups(seasonLeagueId, selectedWeek)
+          targetLeagueId === league.league_id ? Promise.resolve(rosters) : getLeagueRosters(targetLeagueId),
+          getLeagueMatchups(targetLeagueId, selectedWeek),
         ]);
 
         setSeasonRosters(seasonRostersData);
         setMatchups(matchupsData);
-      } catch (error) {
-        console.error('Failed to fetch season data:', error);
+      } catch (err) {
+        console.error('Failed to fetch season/matchup data:', err);
         setSeasonRosters(rosters);
       } finally {
         setLoadingSeasonData(false);
       }
     };
 
-    fetchSeasonData();
+    fetchSeasonAndMatchupsData();
   }, [selectedSeason, selectedWeek, league, rosters]);
 
   if (loading) return <LoadingPage />;
   if (error) return <ErrorMessage title="Error" message={error} />;
   if (!league || !users.length || !rosters.length) return null;
 
+  // Group matchups by matchup_id
   const groupedMatchups = matchups.reduce((acc, matchup) => {
     if (!matchup.matchup_id) return acc;
     if (!acc[matchup.matchup_id]) acc[matchup.matchup_id] = [];
     acc[matchup.matchup_id].push(matchup);
     return acc;
-  }, {} as Record<string, any[]>);
+  }, {} as Record<string, SleeperMatchup[]>);
 
-  const sortedGroupedMatchups = Object.entries(groupedMatchups)
-    .sort(([a], [b]) => parseInt(a) - parseInt(b))
-    .reduce((acc, [key, value]) => {
-      acc[key] = value;
+  const finalGroupedMatchups = Object.keys(groupedMatchups)
+    .sort((a, b) => Number(a) - Number(b))
+    .reduce((acc, key) => {
+      acc[key] = groupedMatchups[key];
       return acc;
-    }, {} as Record<string, any[]>);
+    }, {} as Record<string, SleeperMatchup[]>);
 
-  const finalGroupedMatchups = sortedGroupedMatchups;
+  const isPlayoffWeek = selectedWeek >= (league?.settings?.playoff_week_start || 15);
+  const isCurrentWeek = selectedWeek === nflState?.week && selectedSeason === league?.season;
 
-  const getMatchupContext = () => {
-    const isPlayoffs = selectedWeek >= (league?.settings?.playoff_week_start || 15);
-    const isCurrentWeek = selectedWeek === nflState?.week && selectedSeason === league?.season;
-
-    if (isPlayoffs) {
-      return {
-        title: `Week ${selectedWeek}: Playoffs`,
-        subtitle: isCurrentWeek ? 'Championship dreams on the line' : 'Playoff battles.',
-      };
-    }
-
-    return {
-      title: `Week ${selectedWeek}: Regular Season`,
-      subtitle: isCurrentWeek ? "This week's matchups" : 'Head-to-head battles.',
-    };
+  const context = {
+    title: `Week ${selectedWeek}: ${isPlayoffWeek ? 'Playoffs' : 'Regular Season'}`,
+    subtitle: isPlayoffWeek
+      ? isCurrentWeek ? 'Championship dreams on the line' : 'Playoff battles.'
+      : isCurrentWeek ? "This week's matchups" : 'Head-to-head battles.',
   };
 
-  const context = getMatchupContext();
   const hasMatchups = Object.keys(finalGroupedMatchups).length > 0;
-  const isPlayoffWeek = selectedWeek >= (league?.settings?.playoff_week_start || 15);
 
   return (
     <div className="space-y-6">
@@ -210,18 +204,21 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
                 ))}
               </SelectContent>
             </Select>
+
             <div className="flex items-center gap-1 shrink-0">
               <button
-                onClick={() => setSelectedWeek(Math.max(1, selectedWeek - 1))}
+                onClick={() => setSelectedWeek((prev) => Math.max(1, prev - 1))}
                 disabled={selectedWeek <= 1}
                 className="rounded-lg border border-border p-2 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                aria-label="Previous week"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
-                onClick={() => setSelectedWeek(Math.min(18, selectedWeek + 1))}
+                onClick={() => setSelectedWeek((prev) => Math.min(18, prev + 1))}
                 disabled={selectedWeek >= 18}
                 className="rounded-lg border border-border p-2 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                aria-label="Next week"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -229,7 +226,7 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
           </div>
           {hasMatchups && (
             <span className="text-xs text-muted-foreground">
-              {Object.keys(groupedMatchups).length} matchups
+              {Object.keys(finalGroupedMatchups).length} matchups
             </span>
           )}
         </div>
@@ -246,7 +243,7 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
             <div className="text-muted-foreground">
               <Flame className="h-12 w-12 mx-auto mb-4 opacity-30" />
               <h3 className="text-lg font-medium mb-2">No Matchups Available</h3>
-              <p className="text-sm">Hmmm, it must be the offseason. Week {selectedWeek} in Season {selectedSeason} coming soon...</p>
+              <p className="text-sm">Week {selectedWeek} in Season {selectedSeason} has no scheduled matchups.</p>
             </div>
           </CardContent>
         </Card>
@@ -268,20 +265,21 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
 
             if (!roster1 || !roster2 || !user1 || !user2) return null;
 
-            const team1Points = team1.points || 0;
-            const team2Points = team2.points || 0;
+            const team1Points = team1.points ?? 0;
+            const team2Points = team2.points ?? 0;
             const matchupComplete = team1.points !== null && team2.points !== null && (team1Points > 0 || team2Points > 0);
             const team1Winning = team1Points > team2Points;
             const team2Winning = team2Points > team1Points;
             const isTie = matchupComplete && team1Points === team2Points;
             const totalPoints = team1Points + team2Points;
             const pointDifference = Math.abs(team1Points - team2Points);
+
             return (
               <motion.div
                 key={team1.matchup_id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
+                transition={{ duration: 0.4, delay: index * 0.05 }}
               >
                 <Card className="overflow-hidden transition-shadow duration-300 hover:shadow-md">
                   <CardHeader className="pb-2">
@@ -312,53 +310,17 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
                   <CardContent className="p-0">
                     <div className="space-y-px">
                       {/* Team 1 */}
-                      <Link href={`/team/${user1.user_id}`} className={`flex items-center justify-between p-4 md:p-5 transition-colors duration-200 ${
-                        matchupComplete && team1Winning
-                          ? 'bg-primary/[0.04] border-l-4 border-primary'
-                          : isTie && matchupComplete
-                          ? 'bg-amber-500/[0.04] border-l-4 border-amber-500'
-                          : 'border-l-4 border-transparent hover:bg-accent/40'
-                      }`}>
-                        <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
-                          <Avatar
-                            avatarId={user1.avatar}
-                            size={40}
-                            className={`md:w-11 md:h-11 rounded-lg ${
-                              matchupComplete && team1Winning ? 'ring-2 ring-primary' : 'ring-1 ring-border'
-                            }`}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className={`font-semibold text-sm md:text-base truncate ${
-                              matchupComplete && team1Winning ? 'text-primary' : 'text-foreground'
-                            }`}>
-                              {user1.metadata?.team_name || user1.display_name}
-                            </p>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>{roster1.settings.wins || 0}-{roster1.settings.losses || 0}{roster1.settings.ties > 0 ? `-${roster1.settings.ties}` : ''}</span>
-                              <span className="hidden sm:inline">·</span>
-                              <span className="hidden sm:inline">{(((roster1.settings?.fpts || 0) + (roster1.settings?.fpts_decimal || 0) / 100) / Math.max(1, (roster1.settings?.wins || 0) + (roster1.settings?.losses || 0) + (roster1.settings?.ties || 0))).toFixed(1)} avg</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className={`font-display text-2xl md:text-3xl font-bold tabular-nums ${
-                            matchupComplete && team1Winning
-                              ? 'text-primary'
-                              : isTie && matchupComplete
-                              ? 'text-amber-500'
-                              : 'text-foreground'
-                          }`}>
-                            {team1Points?.toFixed(1) || '0.0'}
-                          </div>
-                          {matchupComplete && team1Winning && (
-                            <div className="text-xs text-primary font-semibold">
-                              +{pointDifference.toFixed(1)}
-                            </div>
-                          )}
-                        </div>
-                      </Link>
+                      <TeamCardRow 
+                        user={user1} 
+                        roster={roster1} 
+                        points={team1Points} 
+                        isWinner={matchupComplete && team1Winning}
+                        isTie={isTie && matchupComplete}
+                        pointDifference={pointDifference}
+                        matchupComplete={matchupComplete}
+                      />
 
-                      {/* VS Divider */}
+                      {/* Divider */}
                       <div className="relative py-1.5">
                         <div className="absolute inset-0 flex items-center px-4">
                           <div className="w-full border-t border-border" />
@@ -371,54 +333,18 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
                       </div>
 
                       {/* Team 2 */}
-                      <Link href={`/team/${user2.user_id}`} className={`flex items-center justify-between p-4 md:p-5 transition-colors duration-200 ${
-                        matchupComplete && team2Winning
-                          ? 'bg-primary/[0.04] border-l-4 border-primary'
-                          : isTie && matchupComplete
-                          ? 'bg-amber-500/[0.04] border-l-4 border-amber-500'
-                          : 'border-l-4 border-transparent hover:bg-accent/40'
-                      }`}>
-                        <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
-                          <Avatar
-                            avatarId={user2.avatar}
-                            size={40}
-                            className={`md:w-11 md:h-11 rounded-lg ${
-                              matchupComplete && team2Winning ? 'ring-2 ring-primary' : 'ring-1 ring-border'
-                            }`}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className={`font-semibold text-sm md:text-base truncate ${
-                              matchupComplete && team2Winning ? 'text-primary' : 'text-foreground'
-                            }`}>
-                              {user2.metadata?.team_name || user2.display_name}
-                            </p>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>{roster2.settings.wins || 0}-{roster2.settings.losses || 0}{roster2.settings.ties > 0 ? `-${roster2.settings.ties}` : ''}</span>
-                              <span className="hidden sm:inline">·</span>
-                              <span className="hidden sm:inline">{(((roster2.settings?.fpts || 0) + (roster2.settings?.fpts_decimal || 0) / 100) / Math.max(1, (roster2.settings?.wins || 0) + (roster2.settings?.losses || 0) + (roster2.settings?.ties || 0))).toFixed(1)} avg</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className={`font-display text-2xl md:text-3xl font-bold tabular-nums ${
-                            matchupComplete && team2Winning
-                              ? 'text-primary'
-                              : isTie && matchupComplete
-                              ? 'text-amber-500'
-                              : 'text-foreground'
-                          }`}>
-                            {team2Points?.toFixed(1) || '0.0'}
-                          </div>
-                          {matchupComplete && team2Winning && (
-                            <div className="text-xs text-primary font-semibold">
-                              +{pointDifference.toFixed(1)}
-                            </div>
-                          )}
-                        </div>
-                      </Link>
+                      <TeamCardRow 
+                        user={user2} 
+                        roster={roster2} 
+                        points={team2Points} 
+                        isWinner={matchupComplete && team2Winning}
+                        isTie={isTie && matchupComplete}
+                        pointDifference={pointDifference}
+                        matchupComplete={matchupComplete}
+                      />
                     </div>
 
-                    {/* Matchup Summary */}
+                    {/* Summary */}
                     {matchupComplete && (
                       <div className="px-4 py-3 md:px-5 bg-muted/40 border-t border-border">
                         <div className="flex items-center justify-between text-xs">
@@ -441,5 +367,58 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
 
       <MatchupDetailModal target={openMatchup} onClose={() => setOpenMatchup(null)} />
     </div>
+  );
+}
+
+// Extracted Sub-component for Team Rows
+function TeamCardRow({ user, roster, points, isWinner, isTie, pointDifference, matchupComplete }: any) {
+  const totalGames = (roster.settings?.wins || 0) + (roster.settings?.losses || 0) + (roster.settings?.ties || 0);
+  const totalFpts = (roster.settings?.fpts || 0) + (roster.settings?.fpts_decimal || 0) / 100;
+  const avgPoints = (totalFpts / Math.max(1, totalGames)).toFixed(1);
+
+  return (
+    <Link 
+      href={`/team/${user.user_id}`} 
+      className={`flex items-center justify-between p-4 md:p-5 transition-colors duration-200 ${
+        isWinner
+          ? 'bg-primary/[0.04] border-l-4 border-primary'
+          : isTie
+          ? 'bg-amber-500/[0.04] border-l-4 border-amber-500'
+          : 'border-l-4 border-transparent hover:bg-accent/40'
+      }`}
+    >
+      <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
+        <Avatar
+          avatarId={user.avatar}
+          size={40}
+          className={`md:w-11 md:h-11 rounded-lg ${
+            isWinner ? 'ring-2 ring-primary' : 'ring-1 ring-border'
+          }`}
+        />
+        <div className="min-w-0 flex-1">
+          <p className={`font-semibold text-sm md:text-base truncate ${isWinner ? 'text-primary' : 'text-foreground'}`}>
+            {user.metadata?.team_name || user.display_name}
+          </p>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{roster.settings.wins || 0}-{roster.settings.losses || 0}{roster.settings.ties > 0 ? `-${roster.settings.ties}` : ''}</span>
+            <span className="hidden sm:inline">·</span>
+            <span className="hidden sm:inline">{avgPoints} avg</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="text-right">
+        <div className={`font-display text-2xl md:text-3xl font-bold tabular-nums ${
+          isWinner ? 'text-primary' : isTie ? 'text-amber-500' : 'text-foreground'
+        }`}>
+          {points?.toFixed(1) || '0.0'}
+        </div>
+        {isWinner && matchupComplete && (
+          <div className="text-xs text-primary font-semibold">
+            +{pointDifference.toFixed(1)}
+          </div>
+        )}
+      </div>
+    </Link>
   );
 }
