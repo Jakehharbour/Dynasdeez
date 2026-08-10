@@ -13,11 +13,12 @@ const ChampionRing = dynamic(() => import('@/components/ui/ChampionRing'), { ssr
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtRecord(w: number, l: number, t: number) {
+function fmtRecord(w: number = 0, l: number = 0, t: number = 0) {
   return t > 0 ? `${w}-${l}-${t}` : `${w}-${l}`;
 }
 
 function ordinal(n: number) {
+  if (!n || n <= 0) return '-';
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
@@ -48,10 +49,12 @@ interface FranchiseData {
 }
 
 function computeFranchise(p: TeamProfileResponse): FranchiseData {
-  const { career, advanced, rings } = p;
-  const adv = advanced ?? { consistency: 50, explosiveness: 50, clutch: 50, efficiency: 50, momentum: 50, luck: 50 };
+  const career = p.career ?? { championships: 0, winPct: 0, playoffAppearances: 0, regularSeasonTitles: 0, totalTrades: 0, wins: 0, losses: 0, ties: 0, ppg: 0, ppgAgainst: 0, bestFinish: 0, worstFinish: 0 };
+  const adv = p.advanced ?? { consistency: 50, explosiveness: 50, clutch: 50, efficiency: 50, momentum: 50, luck: 50 };
+  const records = p.recordsHeld ?? [];
+  const rivals = p.rivals ?? [];
 
-  const level = Math.min(5, 1 + career.championships * 2 + (career.winPct >= 60 ? 1 : 0) + (career.playoffAppearances >= 3 ? 1 : 0));
+  const level = Math.min(5, Math.max(1, 1 + (career.championships ?? 0) * 2 + ((career.winPct ?? 0) >= 60 ? 1 : 0) + ((career.playoffAppearances ?? 0) >= 3 ? 1 : 0)));
   const TIERS = [
     { suffix: 'Fieldhouse', label: 'Grassroots' },
     { suffix: 'Park', label: 'Rising' },
@@ -61,34 +64,34 @@ function computeFranchise(p: TeamProfileResponse): FranchiseData {
   ][level - 1];
 
   const capacity = [8000, 16000, 29000, 46000, 68000][level - 1];
-  const formScore = Math.max(0, Math.min(100, career.winPct * 0.5 + adv.momentum * 0.4 + adv.luck * 0.1));
+  const formScore = Math.max(0, Math.min(100, (career.winPct ?? 0) * 0.5 + (adv.momentum ?? 50) * 0.4 + (adv.luck ?? 50) * 0.1));
   const attendancePct = Math.max(38, Math.min(99, Math.round(42 + formScore * 0.56)));
-  const attendance = Math.round(capacity * attendancePct / 100);
+  const attendance = Math.round((capacity * attendancePct) / 100);
 
-  const ticketPrice = Math.round(22 + career.championships * 18 + career.regularSeasonTitles * 6 + career.winPct * 0.35 + (adv.explosiveness > 70 ? 8 : 0));
+  const ticketPrice = Math.round(22 + (career.championships ?? 0) * 18 + (career.regularSeasonTitles ?? 0) * 6 + (career.winPct ?? 0) * 0.35 + ((adv.explosiveness ?? 0) > 70 ? 8 : 0));
 
-  const merchScore = Math.max(0, Math.min(100, adv.explosiveness * 0.4 + career.championships * 15 + adv.clutch * 0.2 + Math.min(career.totalTrades, 20) * 0.5));
+  const merchScore = Math.max(0, Math.min(100, (adv.explosiveness ?? 0) * 0.4 + (career.championships ?? 0) * 15 + (adv.clutch ?? 0) * 0.2 + Math.min(career.totalTrades ?? 0, 20) * 0.5));
   const merchTier = merchScore >= 80 ? 'Sellout Every Drop' : merchScore >= 60 ? 'Hot Commodity' : merchScore >= 35 ? 'Steady Seller' : 'Slow Mover';
-  const bestHighlight = p.recordsHeld.find(r => ['highScore', 'blowout'].includes(r.type));
+  const bestHighlight = records.find(r => ['highScore', 'blowout'].includes(r.type));
   const merchBlurb = bestHighlight
     ? `Jerseys flew off the shelf after: "${bestHighlight.description}"`
-    : career.championships > 0
+    : (career.championships ?? 0) > 0
       ? 'Championship gear still moves steady, years later.'
       : 'The pro shop is waiting on a signature moment.';
 
-  const topRivalGames = p.rivals[0]?.gamesPlayed ?? 0;
+  const topRivalGames = rivals[0]?.gamesPlayed ?? 0;
 
   const upgrades = [
-    { label: 'Championship Rafters', unlocked: career.championships > 0, hint: 'Win a title' },
-    { label: 'Retractable Roof', unlocked: adv.explosiveness >= 65, hint: 'Explosiveness 65+' },
-    { label: 'Luxury Suites', unlocked: adv.consistency >= 65, hint: 'Consistency 65+' },
-    { label: 'Clutch City Jumbotron', unlocked: adv.clutch >= 65, hint: 'Clutch 65+' },
+    { label: 'Championship Rafters', unlocked: (career.championships ?? 0) > 0, hint: 'Win a title' },
+    { label: 'Retractable Roof', unlocked: (adv.explosiveness ?? 0) >= 65, hint: 'Explosiveness 65+' },
+    { label: 'Luxury Suites', unlocked: (adv.consistency ?? 0) >= 65, hint: 'Consistency 65+' },
+    { label: 'Clutch City Jumbotron', unlocked: (adv.clutch ?? 0) >= 65, hint: 'Clutch 65+' },
     { label: 'Rivalry Wing', unlocked: topRivalGames >= 5, hint: 'A rivalry with 5+ games' },
-    { label: 'Analytics War Room', unlocked: adv.efficiency >= 65, hint: 'Efficiency 65+' },
+    { label: 'Analytics War Room', unlocked: (adv.efficiency ?? 0) >= 65, hint: 'Efficiency 65+' },
   ];
 
   return {
-    stadiumName: `${p.teamName} ${TIERS.suffix}`,
+    stadiumName: `${p.teamName ?? 'Franchise'} ${TIERS.suffix}`,
     tierLabel: TIERS.label,
     level,
     capacity, attendance, attendancePct, ticketPrice, merchTier, merchBlurb,
@@ -112,6 +115,10 @@ function StatCell({ label, value, sub }: { label: string; value: string; sub?: s
 
 function SeasonCard({ season }: { season: SeasonEntry }) {
   const record = fmtRecord(season.wins, season.losses, season.ties);
+  const pf = (Number(season.pointsFor) || 0).toFixed(1);
+  const pa = (Number(season.pointsAgainst) || 0).toFixed(1);
+  const highlights = season.highlights ?? [];
+
   return (
     <div className="relative pl-8">
       <span className={cn(
@@ -135,12 +142,12 @@ function SeasonCard({ season }: { season: SeasonEntry }) {
           <span className="text-sm font-bold tabular-nums text-foreground">{record}</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70">
-          <span>{season.pointsFor.toFixed(1)} pts for</span>
-          <span>{season.pointsAgainst.toFixed(1)} pts against</span>
+          <span>{pf} pts for</span>
+          <span>{pa} pts against</span>
         </div>
-        {season.highlights.length > 0 && (
+        {highlights.length > 0 && (
           <ul className="mt-2.5 space-y-1 border-t border-border/40 pt-2.5">
-            {season.highlights.map((h, i) => (
+            {highlights.map((h, i) => (
               <li key={i} className="text-[11px] leading-snug text-muted-foreground/70">{h}</li>
             ))}
           </ul>
@@ -153,8 +160,8 @@ function SeasonCard({ season }: { season: SeasonEntry }) {
 // ── Rivals ───────────────────────────────────────────────────────────────────
 
 function RivalCard({ rival }: { rival: RivalEntry }) {
-  const total = Math.max(1, rival.gamesPlayed);
-  const winShare = (rival.wins / total) * 100;
+  const total = Math.max(1, rival.gamesPlayed ?? 0);
+  const winShare = ((rival.wins ?? 0) / total) * 100;
   return (
     <Link href={`/team/${rival.userId}`} className="block rounded-xl border border-border bg-card p-3.5 transition-colors hover:border-primary/40">
       <div className="mb-2 flex items-center gap-2 min-w-0">
@@ -163,7 +170,7 @@ function RivalCard({ rival }: { rival: RivalEntry }) {
       </div>
       <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted-foreground/70">
         <span className="font-bold tabular-nums text-foreground">{fmtRecord(rival.wins, rival.losses, rival.ties)}</span>
-        <span>{rival.gamesPlayed} games</span>
+        <span>{rival.gamesPlayed ?? 0} games</span>
       </div>
       <div className="h-1 w-full overflow-hidden rounded-full bg-rose-400/20">
         <div className="h-full rounded-full bg-primary/70" style={{ width: `${winShare}%` }} />
@@ -200,12 +207,26 @@ export default function TeamProfileView({ userId }: { userId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!userId || userId === 'undefined') {
+      setError('Invalid or missing manager ID.');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
+
     fetch(`/api/team/${userId}`)
-      .then(r => r.json())
-      .then((d: TeamProfileResponse & { error?: string }) => {
-        if (d.error) throw new Error(d.error);
+      .then(async (r) => {
+        const isJson = r.headers.get('content-type')?.includes('application/json');
+        const d = isJson ? await r.json() : null;
+
+        if (!r.ok) {
+          throw new Error(d?.error || `Failed to load team profile (${r.status})`);
+        }
+        return d;
+      })
+      .then((d: TeamProfileResponse) => {
         setData(d);
       })
       .catch(e => setError(e.message))
@@ -227,7 +248,12 @@ export default function TeamProfileView({ userId }: { userId: string }) {
     );
   }
 
-  const { career } = data;
+  const career = data.career ?? { wins: 0, losses: 0, ties: 0, winPct: 0, ppg: 0, ppgAgainst: 0, playoffAppearances: 0, bestFinish: 0, worstFinish: 0, totalTrades: 0, championships: 0, regularSeasonTitles: 0 };
+  const rings = data.rings ?? [];
+  const seasons = data.seasons ?? [];
+  const rivals = data.rivals ?? [];
+  const recordsHeld = data.recordsHeld ?? [];
+
   const seasonRange = data.firstSeason === data.currentSeason ? data.firstSeason : `${data.firstSeason}-${data.currentSeason}`;
 
   return (
@@ -240,22 +266,22 @@ export default function TeamProfileView({ userId }: { userId: string }) {
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5 sm:flex-row sm:items-center">
         <div className="relative shrink-0">
           <Avatar avatarId={data.avatar} size={96} className="rounded-2xl" />
-          {career.championships > 0 && (
+          {(career.championships ?? 0) > 0 && (
             <div className="absolute inset-0 -z-10 rounded-2xl bg-primary/30 blur-xl opacity-60" />
           )}
         </div>
         <div className="min-w-0">
           <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{data.teamName}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {data.seasonsPlayed} season{data.seasonsPlayed !== 1 ? 's' : ''} &middot; {seasonRange} &middot; {fmtRecord(career.wins, career.losses, career.ties)} all-time
+            {data.seasonsPlayed ?? 0} season{(data.seasonsPlayed ?? 0) !== 1 ? 's' : ''} &middot; {seasonRange} &middot; {fmtRecord(career.wins, career.losses, career.ties)} all-time
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {career.championships > 0 && (
+            {(career.championships ?? 0) > 0 && (
               <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[11px] font-bold text-primary">
                 {career.championships}&times; Champion
               </span>
             )}
-            {career.regularSeasonTitles > 0 && (
+            {(career.regularSeasonTitles ?? 0) > 0 && (
               <span className="rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
                 {career.regularSeasonTitles}&times; Reg. Season Title
               </span>
@@ -265,11 +291,11 @@ export default function TeamProfileView({ userId }: { userId: string }) {
       </motion.div>
 
       {/* Trophy case */}
-      {data.rings.length > 0 ? (
+      {rings.length > 0 ? (
         <div className="space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Trophy Case</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {data.rings.map(ring => (
+            {rings.map(ring => (
               <div key={ring.season} className="rounded-xl border border-border bg-card p-2">
                 <ChampionRing modelPath={ring.modelPath} height={140} />
                 <p className="mt-1 text-center text-xs font-semibold text-foreground">{ring.season} Champion</p>
@@ -287,13 +313,13 @@ export default function TeamProfileView({ userId }: { userId: string }) {
       <div className="space-y-2">
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Career</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCell label="Record" value={fmtRecord(career.wins, career.losses, career.ties)} sub={`${career.winPct}% win rate`} />
-          <StatCell label="Points For" value={career.ppg.toFixed(1)} sub="per game" />
-          <StatCell label="Points Against" value={career.ppgAgainst.toFixed(1)} sub="per game" />
-          <StatCell label="Playoff Berths" value={String(career.playoffAppearances)} sub={`of ${data.seasonsPlayed} seasons`} />
-          <StatCell label="Best Finish" value={career.bestFinish > 0 ? ordinal(career.bestFinish) : '-'} />
-          {career.worstFinish > 0 && <StatCell label="Worst Finish" value={ordinal(career.worstFinish)} />}
-          <StatCell label="Trades Made" value={String(career.totalTrades)} />
+          <StatCell label="Record" value={fmtRecord(career.wins, career.losses, career.ties)} sub={`${career.winPct ?? 0}% win rate`} />
+          <StatCell label="Points For" value={(Number(career.ppg) || 0).toFixed(1)} sub="per game" />
+          <StatCell label="Points Against" value={(Number(career.ppgAgainst) || 0).toFixed(1)} sub="per game" />
+          <StatCell label="Playoff Berths" value={String(career.playoffAppearances ?? 0)} sub={`of ${data.seasonsPlayed ?? 0} seasons`} />
+          <StatCell label="Best Finish" value={ordinal(career.bestFinish)} />
+          {(career.worstFinish ?? 0) > 0 && <StatCell label="Worst Finish" value={ordinal(career.worstFinish)} />}
+          <StatCell label="Trades Made" value={String(career.totalTrades ?? 0)} />
         </div>
       </div>
 
@@ -360,12 +386,12 @@ export default function TeamProfileView({ userId }: { userId: string }) {
       )}
 
       {/* Story timeline */}
-      {data.seasons.length > 0 && (
+      {seasons.length > 0 && (
         <div className="space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">The Story</p>
           <div className="relative space-y-3">
             <div className="absolute left-2 top-2 bottom-2 w-px bg-border" />
-            {[...data.seasons].reverse().map(season => (
+            {[...seasons].reverse().map(season => (
               <SeasonCard key={season.season} season={season} />
             ))}
           </div>
@@ -373,21 +399,21 @@ export default function TeamProfileView({ userId }: { userId: string }) {
       )}
 
       {/* Rivalries */}
-      {data.rivals.length > 0 && (
+      {rivals.length > 0 && (
         <div className="space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Rivalries</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {data.rivals.map(r => <RivalCard key={r.userId} rival={r} />)}
+            {rivals.map(r => <RivalCard key={r.userId} rival={r} />)}
           </div>
         </div>
       )}
 
       {/* Records held */}
-      {data.recordsHeld.length > 0 && (
+      {recordsHeld.length > 0 && (
         <div className="space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Records &amp; Achievements</p>
           <div className="rounded-xl border border-border bg-card divide-y divide-border/50">
-            {data.recordsHeld.map((r, i) => (
+            {recordsHeld.map((r, i) => (
               <div key={i} className="flex items-start justify-between gap-3 p-3">
                 <div className="min-w-0">
                   <p className="text-sm text-foreground">{r.description}</p>

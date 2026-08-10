@@ -561,168 +561,121 @@ interface AdvancedTeamMetrics {
 
 export async function getAdvancedTeamMetrics(leagueId: string, season?: string): Promise<AdvancedTeamMetrics[]> {
   try {
-    // For all-time stats, we need to aggregate across all seasons
-    if (!season || season === 'all-time') {
-      const metricsMap = new Map<string, AdvancedTeamMetrics>();
+    // Obtain ALL linked league IDs (traverses both forward and backward)
+    const linkedIds = await getAllLinkedLeagueIds(leagueId);
+
+    // Filter to specific season if requested
+    let targetLeagueIds = linkedIds;
+    if (season && season !== 'all-time') {
+      const seasonLeagues = await Promise.all(
+        linkedIds.map(async (id) => {
+          const l = await getLeagueInfo(id);
+          return { id, season: l?.season };
+        })
+      );
+      const matched = seasonLeagues.find((l) => l.season === season);
+      if (matched) {
+        targetLeagueIds = [matched.id];
+      }
+    }
+
+    // Process all matching leagues
+    const metricsMap = new Map<string, AdvancedTeamMetrics>();
+    const processedSeasons = new Set<string>();
+
+    for (const currentLeagueId of targetLeagueIds) {
+      const league = await getLeagueInfo(currentLeagueId);
+      if (!league || processedSeasons.has(league.season)) continue;
+
+      processedSeasons.add(league.season);
+
+      const totalWeeks = await getLeagueWeeks(currentLeagueId);
       
-      // Start with current league and traverse backwards to get all seasons
-      let currentLeagueId = leagueId;
-      const processedSeasons = new Set<string>();
+      const [users, rosters, allMatchups] = await Promise.all([
+        getLeagueUsers(currentLeagueId),
+        getLeagueRosters(currentLeagueId),
+        getAllSeasonMatchups(currentLeagueId, totalWeeks),
+      ]);
 
-      while (currentLeagueId) {
-        const league = await getLeagueInfo(currentLeagueId);
-        if (!league) {
-          currentLeagueId = league.previous_league_id || '';
-          continue;
-        }
-        
-        // Skip if we've already processed this season
-        if (processedSeasons.has(league.season)) {
-          currentLeagueId = league.previous_league_id || '';
-          continue;
-        }
-        
-        processedSeasons.add(league.season);
-
-        const totalWeeks = await getLeagueWeeks(currentLeagueId);
-        console.log(`Fetching ${totalWeeks} weeks for league ${currentLeagueId} (${league.season})`);
-        
-        const [users, rosters, allMatchups] = await Promise.all([
-          getLeagueUsers(currentLeagueId),
-          getLeagueRosters(currentLeagueId),
-          getAllSeasonMatchups(currentLeagueId, totalWeeks),
-        ]);
-
-        // Check if this season has any completed games
-        const completedScores = allMatchups.flat().map(m => m.points || 0).filter(score => score > 0);
-        if (completedScores.length === 0) {
-          console.log(`Skipping season ${league.season} - no completed games`);
-          currentLeagueId = league.previous_league_id || '';
-          continue;
-        }
-        
-        console.log(`Processing season ${league.season} with ${completedScores.length} completed games`);
-
-        const leagueMetrics = await calculateAdvancedSeasonMetrics(users, rosters, allMatchups, league);
-        
-        // Aggregate metrics for each user
-        leagueMetrics.forEach(metric => {
-          const existing = metricsMap.get(metric.userId);
-          if (!existing) {
-            metricsMap.set(metric.userId, metric);
-            return;
-          }
-
-          // Combine stats across seasons
-          existing.record.wins += metric.record.wins;
-          existing.record.losses += metric.record.losses;
-          existing.record.ties += metric.record.ties;
-          existing.record.gamesPlayed += metric.record.gamesPlayed;
-          existing.points.total += metric.points.total;
-          existing.points.weeklyScores.push(...metric.points.weeklyScores);
-          existing.points.high = Math.max(existing.points.high, metric.points.high);
-          existing.points.low = Math.min(existing.points.low, metric.points.low);
-          existing.clutch.closeWins += metric.clutch.closeWins;
-          existing.clutch.closeGames += metric.clutch.closeGames;
-          existing.clutch.topWins += metric.clutch.topWins;
-          existing.clutch.playoffWins += metric.clutch.playoffWins;
-          existing.explosiveness.explosiveGames += metric.explosiveness.explosiveGames;
-          existing.momentum.longestWinStreak = Math.max(existing.momentum.longestWinStreak, metric.momentum.longestWinStreak);
-          existing.luck.closeLosses += metric.luck.closeLosses;
-          existing.luck.expectedWins += metric.luck.expectedWins;
-        });
-        
-        console.log(`Season ${league.season}: ${leagueMetrics.length} teams processed, weekly scores: ${leagueMetrics.map(m => m.points.weeklyScores.length).join(', ')}`);
-
-        currentLeagueId = league.previous_league_id || '';
+      const completedScores = allMatchups.flat().map(m => m.points || 0).filter(score => score > 0);
+      if (completedScores.length === 0) {
+        console.log(`Skipping season ${league.season} - no completed games`);
+        continue;
       }
 
-      // Recalculate aggregated stats
-      const metrics = Array.from(metricsMap.values());
-      
-      // Calculate overall all-time league average for proper average margin calculation
-      const allTimeScores = metrics.flatMap(m => m.points.weeklyScores);
-      const allTimeLeagueAverage = allTimeScores.length > 0 ? allTimeScores.reduce((sum, score) => sum + score, 0) / allTimeScores.length : 0;
-      
-      metrics.forEach(metric => {
-        const totalGames = metric.points.weeklyScores.length; // Only count completed games
-        const totalWLT = metric.record.wins + metric.record.losses + metric.record.ties;
-        metric.record.winPct = totalWLT > 0 ? (metric.record.wins + metric.record.ties * 0.5) / totalWLT * 100 : 0;
-        
-        // Calculate PPG the same way as season-specific: average of weekly scores
-        metric.points.average = totalGames > 0 ? metric.points.weeklyScores.reduce((sum, score) => sum + score, 0) / totalGames : 0;
-        
-        console.log(`${metric.teamName}: ${totalGames} games, ${metric.points.weeklyScores.length} weekly scores, PPG: ${metric.points.average.toFixed(1)}`);
-        
-        // Recalculate advanced metrics with aggregated data
-        metric.points.standardDeviation = calculateStandardDeviation(metric.points.weeklyScores);
-        metric.points.coefficientOfVariation = metric.points.average > 0 ? metric.points.standardDeviation / metric.points.average : 0;
-        
-        // Calculate average margin against all-time league average
-        metric.consistency.averageMargin = metric.points.average - allTimeLeagueAverage;
-        metric.consistency.score = calculateConsistencyScore(metric.points.coefficientOfVariation);
-        metric.consistency.volatilityIndex = calculateVolatilityIndex(metric.points.weeklyScores);
-        metric.consistency.boomBustRatio = calculateBoomBustRatio(metric.points.weeklyScores);
-        
-        // Recalculate explosive games using all-time league average
-        const allTimeExplosiveThreshold = allTimeLeagueAverage * 1.2;
-        const allTimeExplosiveGames = metric.points.weeklyScores.filter(score => score > allTimeExplosiveThreshold).length;
-        metric.explosiveness.explosiveGames = allTimeExplosiveGames;
-        metric.explosiveness.score = totalGames > 0 ? (allTimeExplosiveGames / totalGames) * 100 : 0;
-        metric.explosiveness.explosiveRate = totalGames > 0 ? allTimeExplosiveGames / totalGames : 0;
-        
-        metric.clutch.score = metric.clutch.closeGames > 0 ? (metric.clutch.closeWins / metric.clutch.closeGames) * 100 : 0;
-        metric.clutch.closeWinRate = metric.clutch.closeGames > 0 ? metric.clutch.closeWins / metric.clutch.closeGames : 0;
-        
-        metric.efficiency.score = calculateEfficiencyScore(metric.points.average, metric.record.winPct, totalGames);
-        metric.efficiency.pointsPerWin = (metric.record.wins || 0) > 0 ? metric.points.total / (metric.record.wins || 0) : 0;
-        metric.efficiency.winEfficiency = totalGames > 0 ? (metric.record.wins || 0) / totalGames : 0;
-        metric.efficiency.scoringEfficiency = calculateScoringEfficiency(metric.points.weeklyScores);
-        
-        metric.momentum.score = calculateMomentumScore(metric.momentum.finalWeeksWinRate);
-        
-        metric.luck.score = calculateLuckScore(metric.luck.expectedWins, metric.record.wins || 0, metric.luck.closeLosses);
-        metric.luck.luckRating = (metric.record.wins || 0) - metric.luck.expectedWins;
+      const leagueMetrics = await calculateAdvancedSeasonMetrics(users, rosters, allMatchups, league);
+
+      // If viewing a single season, return directly
+      if (season && season !== 'all-time') {
+        return leagueMetrics;
+      }
+
+      // Aggregate metrics for all-time view
+      leagueMetrics.forEach(metric => {
+        const existing = metricsMap.get(metric.userId);
+        if (!existing) {
+          metricsMap.set(metric.userId, metric);
+          return;
+        }
+
+        existing.record.wins += metric.record.wins;
+        existing.record.losses += metric.record.losses;
+        existing.record.ties += metric.record.ties;
+        existing.record.gamesPlayed += metric.record.gamesPlayed;
+        existing.points.total += metric.points.total;
+        existing.points.weeklyScores.push(...metric.points.weeklyScores);
+        existing.points.high = Math.max(existing.points.high, metric.points.high);
+        existing.points.low = Math.min(existing.points.low, metric.points.low);
+        existing.clutch.closeWins += metric.clutch.closeWins;
+        existing.clutch.closeGames += metric.clutch.closeGames;
+        existing.clutch.topWins += metric.clutch.topWins;
+        existing.clutch.playoffWins += metric.clutch.playoffWins;
+        existing.explosiveness.explosiveGames += metric.explosiveness.explosiveGames;
+        existing.momentum.longestWinStreak = Math.max(existing.momentum.longestWinStreak, metric.momentum.longestWinStreak);
+        existing.luck.closeLosses += metric.luck.closeLosses;
+        existing.luck.expectedWins += metric.luck.expectedWins;
       });
-
-      return metrics.sort((a, b) => b.record.winPct - a.record.winPct);
     }
 
-    // For specific season, find the correct league ID
-    let targetLeagueId = leagueId;
-    let currentId = leagueId;
-    while (currentId) {
-      const league = await getLeagueInfo(currentId);
-      if (league && league.season === season) {
-        targetLeagueId = currentId;
-        break;
-      }
-      currentId = league?.previous_league_id || '';
-    }
+    const metrics = Array.from(metricsMap.values());
+    const allTimeScores = metrics.flatMap(m => m.points.weeklyScores);
+    const allTimeLeagueAverage = allTimeScores.length > 0 ? allTimeScores.reduce((sum, score) => sum + score, 0) / allTimeScores.length : 0;
 
-    // Get data for specific season
-    const league = await getLeagueInfo(targetLeagueId);
-    if (!league) throw new Error('League not found');
+    metrics.forEach(metric => {
+      const totalGames = metric.points.weeklyScores.length;
+      const totalWLT = metric.record.wins + metric.record.losses + metric.record.ties;
+      metric.record.winPct = totalWLT > 0 ? (metric.record.wins + metric.record.ties * 0.5) / totalWLT * 100 : 0;
+      metric.points.average = totalGames > 0 ? metric.points.weeklyScores.reduce((sum, score) => sum + score, 0) / totalGames : 0;
 
-    const totalWeeks = await getLeagueWeeks(targetLeagueId);
-    console.log(`Fetching ${totalWeeks} weeks for specific season ${league.season}`);
-    
-    const [users, rosters, allMatchups] = await Promise.all([
-      getLeagueUsers(targetLeagueId),
-      getLeagueRosters(targetLeagueId),
-      getAllSeasonMatchups(targetLeagueId, totalWeeks),
-    ]);
+      metric.points.standardDeviation = calculateStandardDeviation(metric.points.weeklyScores);
+      metric.points.coefficientOfVariation = metric.points.average > 0 ? metric.points.standardDeviation / metric.points.average : 0;
 
-    // Check if this season has any completed games
-    const completedScores = allMatchups.flat().map(m => m.points || 0).filter(score => score > 0);
-    if (completedScores.length === 0) {
-      console.log(`Season ${league.season} has no completed games, returning empty metrics`);
-      return [];
-    }
-    
-    console.log(`Processing specific season ${league.season} with ${completedScores.length} completed games`);
+      metric.consistency.averageMargin = metric.points.average - allTimeLeagueAverage;
+      metric.consistency.score = calculateConsistencyScore(metric.points.coefficientOfVariation);
+      metric.consistency.volatilityIndex = calculateVolatilityIndex(metric.points.weeklyScores);
+      metric.consistency.boomBustRatio = calculateBoomBustRatio(metric.points.weeklyScores);
 
-    return calculateAdvancedSeasonMetrics(users, rosters, allMatchups, league);
+      const allTimeExplosiveThreshold = allTimeLeagueAverage * 1.2;
+      const allTimeExplosiveGames = metric.points.weeklyScores.filter(score => score > allTimeExplosiveThreshold).length;
+      metric.explosiveness.explosiveGames = allTimeExplosiveGames;
+      metric.explosiveness.score = totalGames > 0 ? (allTimeExplosiveGames / totalGames) * 100 : 0;
+      metric.explosiveness.explosiveRate = totalGames > 0 ? allTimeExplosiveGames / totalGames : 0;
+
+      metric.clutch.score = metric.clutch.closeGames > 0 ? (metric.clutch.closeWins / metric.clutch.closeGames) * 100 : 0;
+      metric.clutch.closeWinRate = metric.clutch.closeGames > 0 ? metric.clutch.closeWins / metric.clutch.closeGames : 0;
+
+      metric.efficiency.score = calculateEfficiencyScore(metric.points.average, metric.record.winPct, totalGames);
+      metric.efficiency.pointsPerWin = (metric.record.wins || 0) > 0 ? metric.points.total / (metric.record.wins || 0) : 0;
+      metric.efficiency.winEfficiency = totalGames > 0 ? (metric.record.wins || 0) / totalGames : 0;
+      metric.efficiency.scoringEfficiency = calculateScoringEfficiency(metric.points.weeklyScores);
+
+      metric.momentum.score = calculateMomentumScore(metric.momentum.finalWeeksWinRate);
+
+      metric.luck.score = calculateLuckScore(metric.luck.expectedWins, metric.record.wins || 0, metric.luck.closeLosses);
+      metric.luck.luckRating = (metric.record.wins || 0) - metric.luck.expectedWins;
+    });
+
+    return metrics.sort((a, b) => b.record.winPct - a.record.winPct);
   } catch (error) {
     console.error('Failed to calculate advanced team metrics:', error);
     throw error;

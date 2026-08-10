@@ -6,7 +6,7 @@ import {
   getLeagueMatchups,
   getSeasonTransactions,
 } from '@/lib/api';
-import { INITIAL_LEAGUE_ID } from '@/config/league';
+import { getCurrentLeagueId, INITIAL_LEAGUE_ID } from '@/config/league';
 
 export interface Manager {
   userId: string;
@@ -61,7 +61,21 @@ function emptyEntry(): H2HEntry {
 }
 
 export async function fetchRivalriesData(): Promise<RivalriesResponse> {
-  const allLeagueIds = await getAllLinkedLeagueIds(INITIAL_LEAGUE_ID!);
+  const baseLeagueId = INITIAL_LEAGUE_ID ?? (await getCurrentLeagueId());
+  const currentLeagueId = await getCurrentLeagueId();
+  const allLeagueIds = await getAllLinkedLeagueIds(baseLeagueId);
+
+  // 1. Fetch current league users first so we have the absolute latest names & avatars
+  const currentUsers = await getLeagueUsers(currentLeagueId);
+  const currentManagerMap = new Map<string, { username: string; teamName: string; avatar: string }>();
+  
+  for (const u of currentUsers) {
+    currentManagerMap.set(u.user_id, {
+      username: u.display_name ?? u.username ?? 'Unknown',
+      avatar: u.avatar ?? '',
+      teamName: u.metadata?.team_name ?? u.display_name ?? 'Unknown',
+    });
+  }
 
   const managerMap = new Map<string, Manager>();
   const h2h: Record<string, Record<string, H2HEntry>> = {};
@@ -94,13 +108,18 @@ export async function fetchRivalriesData(): Promise<RivalriesResponse> {
     const playoffWeekStart: number = leagueInfo.settings?.playoff_week_start ?? 14;
 
     const userById = new Map<string, any>(users.map((u: any) => [u.user_id, u]));
+    
+    // Populate managers, prioritizing current profile info if available
     for (const u of users) {
       if (!managerMap.has(u.user_id)) {
+        const currentInfo = currentManagerMap.get(u.user_id);
+        const fallbackTeamName = (u.metadata?.team_name || u.display_name) ?? 'Unknown';
+        
         managerMap.set(u.user_id, {
           userId:   u.user_id,
-          username: u.display_name ?? u.username ?? 'Unknown',
-          avatar:   u.avatar ?? '',
-          teamName: u.metadata?.team_name || u.display_name || 'Unknown',
+          username: currentInfo?.username ?? u.display_name ?? u.username ?? 'Unknown',
+          avatar:   currentInfo?.avatar ?? u.avatar ?? '',
+          teamName: currentInfo?.teamName ?? fallbackTeamName,
         });
       }
     }
@@ -128,8 +147,8 @@ export async function fetchRivalriesData(): Promise<RivalriesResponse> {
     for (const tx of allTransactions) {
       if (tx.type !== 'trade') continue;
       const tradeUserIds = tx.roster_ids
-        .map(rId => rosterToUser.get(rId))
-        .filter((uid): uid is string => !!uid);
+        .map((rId: number) => rosterToUser.get(rId))
+        .filter((uid: string | undefined): uid is string => !!uid);
       if (tradeUserIds.length < 2) continue;
 
       for (let i = 0; i < tradeUserIds.length; i++) {
@@ -183,10 +202,6 @@ export async function fetchRivalriesData(): Promise<RivalriesResponse> {
         const s1 = a.points ?? 0;
         const s2 = b.points ?? 0;
 
-        // Sleeper returns scheduled-but-unplayed fixtures for the current
-        // season as 0-0. They must not count: they inflated every record (the
-        // else branch below awarded u2 a phantom win) and a zero margin reads
-        // as a maximally close game to anything scoring rivalry intensity.
         if (s1 === 0 && s2 === 0) continue;
 
         ensure(u1, u2);
@@ -197,7 +212,6 @@ export async function fetchRivalriesData(): Promise<RivalriesResponse> {
         h2h[u2][u1].pointsFor     += s2;
         h2h[u2][u1].pointsAgainst += s1;
 
-        // A genuine tie is neither a win nor a loss for either side.
         if (s1 > s2)      { h2h[u1][u2].wins++;   h2h[u2][u1].losses++; }
         else if (s2 > s1) { h2h[u1][u2].losses++; h2h[u2][u1].wins++; }
 

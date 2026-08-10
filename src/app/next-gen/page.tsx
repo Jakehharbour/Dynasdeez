@@ -18,10 +18,13 @@ export default async function NextGenStatsPage() {
   }
 
   try {
-    const leagueId = await getCurrentLeagueId();
+    const currentLeagueId = await getCurrentLeagueId();
+    
+    // Fetch metrics for the current active season, but fetch ALL seasons 
+    // passing the base INITIAL_LEAGUE_ID to guarantee complete traversal.
     const [initialMetrics, seasons] = await Promise.all([
-      getAdvancedTeamMetrics(leagueId),
-      getAllLeagueSeasons(leagueId),
+      getAdvancedTeamMetrics(currentLeagueId),
+      getAllLeagueSeasons(INITIAL_LEAGUE_ID),
     ]);
 
     return (
@@ -32,7 +35,7 @@ export default async function NextGenStatsPage() {
         <NextGenStats
           initialMetrics={initialMetrics}
           seasons={seasons}
-          leagueId={leagueId}
+          leagueId={currentLeagueId}
         />
       </PageLayout>
     );
@@ -45,4 +48,4 @@ export default async function NextGenStatsPage() {
       />
     );
   }
-} 
+}

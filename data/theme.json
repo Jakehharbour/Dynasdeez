@@ -1,25 +1,25 @@
 {
-  "palette": "nord",
-  "primaryH": 193,
-  "primaryS": 43,
-  "primaryL": 67,
-  "primaryHLight": 210,
-  "primarySLight": 34,
-  "primaryLLight": 38,
+  "palette": "tidal",
+  "primaryH": 172,
+  "primaryS": 66,
+  "primaryL": 55,
+  "primaryHLight": 176,
+  "primarySLight": 72,
+  "primaryLLight": 32,
   "radiusRem": 0.5,
   "fontPair": "familjen-inter",
   "background": "grid",
   "motion": "full",
   "logoUrl": "/dominationleague.png",
-  "leagueName": "The Domination League",
+  "leagueName": "Dynasdeez",
   "txColorsDark": {
-    "trade": "#88c0d0",
-    "waiver": "#a3be8c",
-    "freeAgent": "#d8dee9"
+    "trade": "#2dd4bf",
+    "waiver": "#f472b6",
+    "freeAgent": "#9ec6d0"
   },
   "txColorsLight": {
-    "trade": "#417b8c",
-    "waiver": "#5a7247",
-    "freeAgent": "#6b7280"
+    "trade": "#0f766e",
+    "waiver": "#be185d",
+    "freeAgent": "#4b6c78"
   }
 }

@@ -7,6 +7,8 @@ import { useGLTF, Environment, ContactShadows, OrbitControls } from '@react-thre
 import { Box3, Vector3 } from 'three';
 import { Maximize2, X } from 'lucide-react';
 
+const DEFAULT_RING_MODEL = '/models/rings/ring-2025.glb';
+
 function RingModel({ path }: { path: string }) {
   const { scene } = useGLTF(path);
 
@@ -28,13 +30,15 @@ function RingModel({ path }: { path: string }) {
 }
 
 function RingCanvas({ modelPath }: { modelPath: string }) {
+  const activePath = modelPath || DEFAULT_RING_MODEL;
+
   return (
     <Canvas camera={{ position: [0, 0.6, 5.5], fov: 28 }} gl={{ antialias: true, alpha: true }} shadows>
       <ambientLight intensity={0.5} />
       <directionalLight position={[4, 6, 4]} intensity={1.2} castShadow />
       <directionalLight position={[-4, 2, -4]} intensity={0.35} color="#c0a060" />
       <Suspense fallback={null}>
-        <RingModel path={modelPath} />
+        <RingModel path={activePath} />
         <ContactShadows position={[0, -0.7, 0]} opacity={0.3} scale={3} blur={2.5} far={1.5} />
         <Environment preset="studio" />
       </Suspense>
@@ -54,12 +58,14 @@ function RingCanvas({ modelPath }: { modelPath: string }) {
 }
 
 interface ChampionRingProps {
-  modelPath: string;
+  modelPath?: string;
   height?: number;
 }
 
-export default function ChampionRing({ modelPath, height = 220 }: ChampionRingProps) {
+export default function ChampionRing({ modelPath = DEFAULT_RING_MODEL, height = 220 }: ChampionRingProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const activeModelPath = DEFAULT_RING_MODEL;
 
   return (
     <>
@@ -67,7 +73,7 @@ export default function ChampionRing({ modelPath, height = 220 }: ChampionRingPr
         className="relative w-full rounded-xl overflow-hidden bg-card/60"
         style={{ height }}
       >
-        <RingCanvas modelPath={modelPath} />
+        <RingCanvas modelPath={activeModelPath} />
         <button
           onClick={() => setIsFullscreen(true)}
           className="absolute top-2 right-2 p-1.5 rounded-lg bg-background/60 hover:bg-background/90 text-muted-foreground hover:text-foreground transition-colors backdrop-blur-sm"
@@ -87,7 +93,7 @@ export default function ChampionRing({ modelPath, height = 220 }: ChampionRingPr
             style={{ height: 'min(80vh, 640px)' }}
             onClick={e => e.stopPropagation()}
           >
-            <RingCanvas modelPath={modelPath} />
+            <RingCanvas modelPath={activeModelPath} />
             <button
               onClick={() => setIsFullscreen(false)}
               className="absolute top-3 right-3 p-2 rounded-xl bg-background/60 hover:bg-background/90 text-muted-foreground hover:text-foreground transition-colors backdrop-blur-sm"
