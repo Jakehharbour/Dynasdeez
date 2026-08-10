@@ -68,7 +68,7 @@ const AiProposalSchema = z.object({
 });
 
 const AiResponseSchema = z.object({
-  proposals: z.array(AiProposalSchema).min(1).max(20),
+  proposals: z.array(AiProposalSchema).min(1).max(10),
 });
 
 // ── Data fetching ──────────────────────────────────────────────────────────────
@@ -210,7 +210,10 @@ function buildPrompt(teams: any[], currentWeek: number): string {
     ].join('\n');
   }).join('\n');
 
-  return `You are a sharp, deeply knowledgeable fantasy football analyst embedded inside a league's private dashboard. You know every roster, every trend, and every weakness in this league. Your job is to generate ${Math.min(teams.length * 2, 16)} creative, specific trade proposals for the managers.
+  // Request fewer proposal items (max 6-8) to reduce output token generation costs
+  const proposalCount = Math.min(teams.length, 8);
+
+  return `You are a sharp, deeply knowledgeable fantasy football analyst embedded inside a league's private dashboard. You know every roster, every trend, and every weakness in this league. Your job is to generate ${proposalCount} creative, specific trade proposals for the managers.
 
 WEEK: ${currentWeek}
 
@@ -260,7 +263,7 @@ function resolveProposals(
 
     const resolvePlayer = (ap: z.infer<typeof AiPlayerSchema>): PlayerValue => {
       const found = playerByName.get(ap.name.toLowerCase());
-      // Use AI data as fallback if player not found in values map (e.g. 0-week seasons)
+      // Use AI data as fallback if player not found in values map
       return found ?? {
         playerId: `ai-${ap.name.replace(/\s+/g, '-').toLowerCase()}`,
         name: ap.name,
@@ -303,6 +306,7 @@ export async function generateTradeProposals(leagueId: string): Promise<TradeRes
     model: claude(MODEL_FAST),
     schema: AiResponseSchema,
     prompt,
+    maxOutputTokens: 1500, // Capped to prevent overly long responses and conserve API credits
   });
 
   const proposals = resolveProposals(object.proposals, teams, playerValues);
