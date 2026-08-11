@@ -16,6 +16,7 @@ import {
   Sword,
   Shuffle,
   Shirt,
+  TrendingUp,
   ChevronDown,
   Menu,
   X,
@@ -33,11 +34,12 @@ interface NavItem {
 }
 
 const PRIMARY_NAV: NavItem[] = [
-  { name: 'Home',      href: '/',          icon: LayoutDashboard },
-  { name: 'Matchups',  href: '/matchups',  icon: Swords          },
-  { name: 'Rivalries', href: '/rivalries', icon: Sword           },
-  { name: 'Next Gen',  href: '/next-gen',  icon: Activity        },
-  { name: 'History',   href: '/history',   icon: Database        },
+  { name: 'Home',           href: '/',               icon: LayoutDashboard },
+  { name: 'Matchups',       href: '/matchups',       icon: Swords          },
+  { name: 'Power Rankings', href: '/power-rankings', icon: TrendingUp      },
+  { name: 'Rivalries',      href: '/rivalries',      icon: Sword           },
+  { name: 'Next Gen',       href: '/next-gen',       icon: Activity        },
+  { name: 'History',        href: '/history',        icon: Database        },
 ];
 
 const MORE_NAV: NavItem[] = [
@@ -89,8 +91,6 @@ export default function Navbar({ logoUrl, leagueName }: NavbarProps) {
 
   const isMoreActive = MORE_NAV.some(item => pathname === item.href);
 
-  // Lighter and more transparent at rest so the ambient background reads
-  // through it; condenses into frosted glass once you scroll.
   const navbarClass = cn(
     'sticky top-0 z-50 w-full',
     'transition-[background-color,border-color,box-shadow] duration-300',
@@ -102,8 +102,6 @@ export default function Navbar({ logoUrl, leagueName }: NavbarProps) {
   const brand = (
     <>
       <div className="relative shrink-0">
-        {/* Accent halo blooms on hover */}
-        
         <Logo
           src={logoUrl}
           className="relative h-16 w-auto lg:h-20 xl:h-24 object-contain transition-transform duration-300 group-hover:scale-105"
@@ -137,17 +135,13 @@ export default function Navbar({ logoUrl, leagueName }: NavbarProps) {
   return (
     <>
       <header className={navbarClass}>
-        
-
         <nav className="mx-auto flex h-20 lg:h-24 xl:h-28 max-w-7xl items-center justify-between pl-2 pr-4 sm:pl-3 sm:pr-6 lg:pl-4 lg:pr-8">
           {/* Logo */}
           <Link href="/" className="group flex min-w-0 flex-1 items-center gap-3 lg:flex-none lg:shrink">
             {brand}
           </Link>
 
-          {/* Desktop nav, kicks in at lg (1024px), not md (768px), since md
-              lands right in iPad-portrait territory (768-834px) and the full
-              5-link row plus the More dropdown doesn't fit there. */}
+          {/* Desktop nav */}
           <div className="hidden xl:flex xl:items-center xl:gap-1">
             {PRIMARY_NAV.map(item => {
               const isActive = pathname === item.href;
@@ -162,9 +156,6 @@ export default function Navbar({ logoUrl, leagueName }: NavbarProps) {
                       : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]',
                   )}
                 >
-                  {/* Pill is rendered first and the label lifted above it ,
-                      previously the absolutely-positioned pill painted over
-                      the icon and text, dimming them. */}
                   {isActive && (
                     <>
                       <motion.span
@@ -261,7 +252,7 @@ export default function Navbar({ logoUrl, leagueName }: NavbarProps) {
         </nav>
       </header>
 
-      {/* Mobile drawer, all items */}
+      {/* Mobile drawer */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -271,7 +262,6 @@ export default function Navbar({ logoUrl, leagueName }: NavbarProps) {
             transition={{ duration: 0.15, ease: 'easeOut' }}
             className="fixed inset-x-0 top-20 lg:top-24 z-40 xl:hidden border-b border-border/60 bg-background/95 backdrop-blur-xl shadow-[0_8px_32px_-4px_hsl(0_0%_0%/0.4)]"
           >
-            
             <nav className="mx-auto max-w-7xl px-4 py-3 flex flex-col gap-0.5">
               {ALL_NAV.map(item => {
                 const isActive = pathname === item.href;
