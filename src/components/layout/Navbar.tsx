@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Menu,
   X,
+  Gamepad2,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import Logo from '@/components/ui/Logo';
@@ -43,12 +44,13 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 const MORE_NAV: NavItem[] = [
-  { name: 'Rosters',      href: '/rosters',      icon: Shirt        },
-  { name: 'Schedule Lab', href: '/schedule-lab', icon: Shuffle      },
-  { name: 'Transactions', href: '/transactions', icon: Receipt      },
-  { name: 'Drafts',       href: '/drafts',       icon: ClipboardList },
-  { name: 'Media',        href: '/media',        icon: Newspaper    },
-  { name: 'Constitution', href: '/constitution', icon: Scroll       },
+  { name: 'Rosters',         href: '/rosters',         icon: Shirt         },
+  { name: 'Schedule Lab',    href: '/schedule-lab',    icon: Shuffle       },
+  { name: 'Playoff Machine', href: '/playoff-machine', icon: Gamepad2      },
+  { name: 'Transactions',    href: '/transactions',    icon: Receipt       },
+  { name: 'Drafts',          href: '/drafts',          icon: ClipboardList },
+  { name: 'Media',           href: '/media',           icon: Newspaper     },
+  { name: 'Constitution',    href: '/constitution',    icon: Scroll        },
 ];
 
 const ALL_NAV = [...PRIMARY_NAV, ...MORE_NAV];
