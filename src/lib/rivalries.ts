@@ -70,10 +70,16 @@ export async function fetchRivalriesData(): Promise<RivalriesResponse> {
   const currentManagerMap = new Map<string, { username: string; teamName: string; avatar: string }>();
   
   for (const u of currentUsers) {
+    // Cast metadata to allow accessing custom avatar property without TypeScript errors
+    const metadata = u.metadata as { team_name?: string; avatar?: string } | undefined;
+    
+    const currentAvatar = u.avatar ?? metadata?.avatar ?? '';
+    const currentTeamName = metadata?.team_name ?? u.display_name ?? u.username ?? 'Unknown';
+
     currentManagerMap.set(u.user_id, {
       username: u.display_name ?? u.username ?? 'Unknown',
-      avatar: u.avatar ?? '',
-      teamName: u.metadata?.team_name ?? u.display_name ?? 'Unknown',
+      avatar: currentAvatar,
+      teamName: currentTeamName,
     });
   }
 
@@ -109,11 +115,12 @@ export async function fetchRivalriesData(): Promise<RivalriesResponse> {
 
     const userById = new Map<string, any>(users.map((u: any) => [u.user_id, u]));
     
-    // Populate managers, prioritizing current profile info if available
+    // Populate managers array with initial data
     for (const u of users) {
       if (!managerMap.has(u.user_id)) {
         const currentInfo = currentManagerMap.get(u.user_id);
-        const fallbackTeamName = (u.metadata?.team_name || u.display_name) ?? 'Unknown';
+        const metadata = u.metadata as { team_name?: string; avatar?: string } | undefined;
+        const fallbackTeamName = (metadata?.team_name || u.display_name) ?? 'Unknown';
         
         managerMap.set(u.user_id, {
           userId:   u.user_id,
@@ -223,8 +230,21 @@ export async function fetchRivalriesData(): Promise<RivalriesResponse> {
 
   const uniqueSeasons = [...new Set(seasons)].sort((a, b) => Number(b) - Number(a));
 
+  // Explicit override pass: Force current-season team name, username, and avatar across all managers
+  const updatedManagers = Array.from(managerMap.values()).map((mgr) => {
+    const current = currentManagerMap.get(mgr.userId);
+    if (!current) return mgr;
+
+    return {
+      ...mgr,
+      username: current.username || mgr.username,
+      avatar: current.avatar || mgr.avatar,
+      teamName: current.teamName || mgr.teamName,
+    };
+  });
+
   return {
-    managers: [...managerMap.values()],
+    managers: updatedManagers,
     h2h,
     trades,
     seasons: uniqueSeasons,
