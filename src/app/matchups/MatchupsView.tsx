@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import MatchupDetailModal, { type MatchupTarget } from '@/components/matchup/MatchupDetailModal';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
@@ -22,7 +22,7 @@ import { SeasonSelect } from '@/components/ui/SeasonSelect';
 import { getDefaultSeason } from '@/lib/utils';
 import type { SleeperMatchup } from '@/types/sleeper';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Flame, Trophy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Flame, Trophy, Coffee } from 'lucide-react';
 
 interface MatchupsViewProps {
   currentWeek?: number;
@@ -132,13 +132,20 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
   if (error) return <ErrorMessage title="Error" message={error} />;
   if (!league || !users.length || !rosters.length) return null;
 
-  // Group matchups by matchup_id
-  const groupedMatchups = matchups.reduce((acc, matchup) => {
-    if (!matchup.matchup_id) return acc;
-    if (!acc[matchup.matchup_id]) acc[matchup.matchup_id] = [];
-    acc[matchup.matchup_id].push(matchup);
-    return acc;
-  }, {} as Record<string, SleeperMatchup[]>);
+  // Group matchups by matchup_id and handle teams on Bye
+  const groupedMatchups: Record<string, SleeperMatchup[]> = {};
+  const byeMatchups: SleeperMatchup[] = [];
+
+  matchups.forEach((matchup) => {
+    if (matchup.matchup_id === null || matchup.matchup_id === undefined) {
+      byeMatchups.push(matchup);
+    } else {
+      if (!groupedMatchups[matchup.matchup_id]) {
+        groupedMatchups[matchup.matchup_id] = [];
+      }
+      groupedMatchups[matchup.matchup_id].push(matchup);
+    }
+  });
 
   const finalGroupedMatchups = Object.keys(groupedMatchups)
     .sort((a, b) => Number(a) - Number(b))
@@ -157,7 +164,7 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
       : isCurrentWeek ? "This week's matchups" : 'Head-to-head battles.',
   };
 
-  const hasMatchups = Object.keys(finalGroupedMatchups).length > 0;
+  const hasMatchups = Object.keys(finalGroupedMatchups).length > 0 || byeMatchups.length > 0;
 
   return (
     <div className="space-y-6">
@@ -226,7 +233,7 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
           </div>
           {hasMatchups && (
             <span className="text-xs text-muted-foreground">
-              {Object.keys(finalGroupedMatchups).length} matchups
+              {Object.keys(finalGroupedMatchups).length} matchups {byeMatchups.length > 0 ? `· ${byeMatchups.length} on bye` : ''}
             </span>
           )}
         </div>
@@ -362,6 +369,57 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
               </motion.div>
             );
           })}
+
+          {/* Bye Week Teams Section */}
+          {byeMatchups.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: Object.keys(finalGroupedMatchups).length * 0.05 }}
+              className="lg:col-span-2"
+            >
+              <Card className="overflow-hidden border-dashed">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-2">
+                    <Coffee className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      Bye Week ({byeMatchups.length})
+                    </h3>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 divide-y divide-border">
+                  {byeMatchups.map((team) => {
+                    const roster = seasonRosters.find((r) => r.roster_id === team.roster_id);
+                    const user = users.find((u) => u.user_id === roster?.owner_id);
+                    if (!user || !roster) return null;
+
+                    return (
+                      <Link
+                        key={team.roster_id}
+                        href={`/team/${user.user_id}`}
+                        className="flex items-center justify-between p-4 transition-colors hover:bg-accent/40"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar avatarId={user.avatar} size={36} className="rounded-lg ring-1 ring-border" />
+                          <div>
+                            <p className="font-semibold text-sm text-foreground">
+                              {user.metadata?.team_name || user.display_name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {roster.settings?.wins || 0}-{roster.settings?.losses || 0}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-muted px-2.5 py-1 rounded-md">
+                          Bye
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
         </motion.div>
       )}
 
