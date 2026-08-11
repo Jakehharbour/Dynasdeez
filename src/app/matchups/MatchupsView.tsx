@@ -41,6 +41,7 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
   const [seasons, setSeasons] = useState<string[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<string>('');
   const [seasonRosters, setSeasonRosters] = useState<any[]>([]);
+  const [seasonUsers, setSeasonUsers] = useState<any[]>([]);
   const [loadingSeasonData, setLoadingSeasonData] = useState(false);
 
   // Initial setup load
@@ -63,13 +64,19 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
           getNFLState(),
         ]);
 
-        const defaultSeason = getDefaultSeason(allSeasons, leagueData.draft_id);
+        // Filter out 'all' or 'All-Time' from seasons array so dropdown only displays actual years
+        const validYearSeasons = (allSeasons || []).filter(
+          (s) => s && s.toLowerCase() !== 'all' && s.toLowerCase() !== 'all-time'
+        );
+
+        const defaultSeason = getDefaultSeason(validYearSeasons, leagueData.draft_id);
 
         setLeague(leagueData);
         setUsers(usersData);
+        setSeasonUsers(usersData);
         setRosters(rostersData);
         setNFLState(nflStateData);
-        setSeasons(allSeasons);
+        setSeasons(validYearSeasons);
         setSelectedSeason(defaultSeason);
         setSeasonRosters(rostersData);
 
@@ -110,23 +117,26 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
           }
         }
 
-        const [seasonRostersData, matchupsData] = await Promise.all([
+        const [seasonRostersData, seasonUsersData, matchupsData] = await Promise.all([
           targetLeagueId === league.league_id ? Promise.resolve(rosters) : getLeagueRosters(targetLeagueId),
+          targetLeagueId === league.league_id ? Promise.resolve(users) : getLeagueUsers(targetLeagueId),
           getLeagueMatchups(targetLeagueId, selectedWeek),
         ]);
 
         setSeasonRosters(seasonRostersData);
+        setSeasonUsers(seasonUsersData);
         setMatchups(matchupsData);
       } catch (err) {
         console.error('Failed to fetch season/matchup data:', err);
         setSeasonRosters(rosters);
+        setSeasonUsers(users);
       } finally {
         setLoadingSeasonData(false);
       }
     };
 
     fetchSeasonAndMatchupsData();
-  }, [selectedSeason, selectedWeek, league, rosters]);
+  }, [selectedSeason, selectedWeek, league, rosters, users]);
 
   if (loading) return <LoadingPage />;
   if (error) return <ErrorMessage title="Error" message={error} />;
@@ -267,10 +277,19 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
 
             const roster1 = seasonRosters.find((r) => r.roster_id === team1.roster_id);
             const roster2 = seasonRosters.find((r) => r.roster_id === team2.roster_id);
-            const user1 = users.find((u) => u.user_id === roster1?.owner_id);
-            const user2 = users.find((u) => u.user_id === roster2?.owner_id);
 
-            if (!roster1 || !roster2 || !user1 || !user2) return null;
+            // Lookup user in current season's user list, falling back to overall user list
+            const user1 = seasonUsers.find((u) => u.user_id === roster1?.owner_id) || users.find((u) => u.user_id === roster1?.owner_id) || {
+              user_id: roster1?.owner_id || 'unknown_1',
+              display_name: `Team ${team1.roster_id}`,
+              avatar: null
+            };
+            
+            const user2 = seasonUsers.find((u) => u.user_id === roster2?.owner_id) || users.find((u) => u.user_id === roster2?.owner_id) || {
+              user_id: roster2?.owner_id || 'unknown_2',
+              display_name: `Team ${team2.roster_id}`,
+              avatar: null
+            };
 
             const team1Points = team1.points ?? 0;
             const team2Points = team2.points ?? 0;
@@ -390,8 +409,11 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
                 <CardContent className="p-0 divide-y divide-border">
                   {byeMatchups.map((team) => {
                     const roster = seasonRosters.find((r) => r.roster_id === team.roster_id);
-                    const user = users.find((u) => u.user_id === roster?.owner_id);
-                    if (!user || !roster) return null;
+                    const user = seasonUsers.find((u) => u.user_id === roster?.owner_id) || users.find((u) => u.user_id === roster?.owner_id) || {
+                      user_id: roster?.owner_id || 'unknown',
+                      display_name: `Team ${team.roster_id}`,
+                      avatar: null
+                    };
 
                     return (
                       <Link
@@ -406,7 +428,7 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
                               {user.metadata?.team_name || user.display_name}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {roster.settings?.wins || 0}-{roster.settings?.losses || 0}
+                              {roster?.settings?.wins || 0}-{roster?.settings?.losses || 0}
                             </p>
                           </div>
                         </div>
@@ -430,8 +452,11 @@ export default function MatchupsView({ currentWeek: initialWeek }: MatchupsViewP
 
 // Extracted Sub-component for Team Rows
 function TeamCardRow({ user, roster, points, isWinner, isTie, pointDifference, matchupComplete }: any) {
-  const totalGames = (roster.settings?.wins || 0) + (roster.settings?.losses || 0) + (roster.settings?.ties || 0);
-  const totalFpts = (roster.settings?.fpts || 0) + (roster.settings?.fpts_decimal || 0) / 100;
+  const wins = roster?.settings?.wins || 0;
+  const losses = roster?.settings?.losses || 0;
+  const ties = roster?.settings?.ties || 0;
+  const totalGames = wins + losses + ties;
+  const totalFpts = (roster?.settings?.fpts || 0) + (roster?.settings?.fpts_decimal || 0) / 100;
   const avgPoints = (totalFpts / Math.max(1, totalGames)).toFixed(1);
 
   return (
@@ -458,7 +483,7 @@ function TeamCardRow({ user, roster, points, isWinner, isTie, pointDifference, m
             {user.metadata?.team_name || user.display_name}
           </p>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>{roster.settings.wins || 0}-{roster.settings.losses || 0}{roster.settings.ties > 0 ? `-${roster.settings.ties}` : ''}</span>
+            <span>{wins}-{losses}{ties > 0 ? `-${ties}` : ''}</span>
             <span className="hidden sm:inline">·</span>
             <span className="hidden sm:inline">{avgPoints} avg</span>
           </div>
