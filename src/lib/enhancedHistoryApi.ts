@@ -914,35 +914,54 @@ async function determineChampionsAndPlayoffs(
     }
   }
 
-  // Update playoff appearances and final rankings
-  playoffTeams.forEach(roster => {
-    const userStats = userStatsMap.get(roster.owner_id);
-    if (userStats) {
-      userStats.playoffAppearances++;
-      userStats.seasonBySeasonStats[league.season].playoffAppearance = true;
-      
-      const finalRank = roster.settings?.poff || 999;
-      userStats.seasonBySeasonStats[league.season].finish = finalRank;
-      userStats.bestFinish = Math.min(userStats.bestFinish, finalRank);
-      userStats.worstFinish = Math.max(userStats.worstFinish, finalRank);
-      
-      // Add playoff appearance record
-      records.push({
-        type: 'playoffAppearance',
-        season: league.season,
-        userId: roster.owner_id,
-        username: userStats.username,
-        avatar: userStats.avatar,
-        value: finalRank,
-        description: `${userStats.username} made the playoffs, finishing ${finalRank}${getOrdinalSuffix(finalRank)}`,
-        details: {
-          rank: finalRank
-        },
-        isPlayoff: true
-      });
+  // 1. Fetch the actual winners bracket for the season
+const winnersBracketRes = await fetch(`https://api.sleeper.app/v1/league/${league.league_id}/winners_bracket`);
+const winnersBracket = await winnersBracketRes.json();
+
+// 2. Extract every roster_id that was placed in the championship bracket
+const playoffRosterIds = new Set<number>();
+winnersBracket.forEach((match: { t1?: number; t2?: number }) => {
+  if (match.t1) playoffRosterIds.add(match.t1);
+  if (match.t2) playoffRosterIds.add(match.t2);
+});
+
+// 3. Map playoff team stats using actual roster assignments
+rosters.forEach(roster => {
+  const ownerId = roster.owner_id;
+  if (!ownerId) return;
+
+  const userStats = userStatsMap.get(ownerId);
+  if (!userStats) return;
+
+  const madePlayoffs = playoffRosterIds.has(roster.roster_id);
+
+  if (madePlayoffs) {
+    userStats.playoffAppearances++;
+    userStats.seasonBySeasonStats[league.season].playoffAppearance = true;
+
+    // Use playoff rank if available; fallback to regular season rank or 0 instead of 999
+    const finalRank = roster.settings?.rank_post_season || roster.settings?.rank || 0;
+
+    userStats.seasonBySeasonStats[league.season].finish = finalRank;
+
+    if (finalRank > 0) {
+      userStats.bestFinish = Math.min(userStats.bestFinish || 999, finalRank);
+      userStats.worstFinish = Math.max(userStats.worstFinish || 0, finalRank);
     }
-  });
-}
+
+    records.push({
+      type: 'playoffAppearance',
+      season: league.season,
+      userId: ownerId,
+      username: userStats.username,
+      avatar: userStats.avatar,
+      value: finalRank,
+      description: `${userStats.username} made the playoffs${finalRank > 0 ? `, finishing ${finalRank}${getOrdinalSuffix(finalRank)}` : ''}`,
+      details: { rank: finalRank },
+      isPlayoff: true
+    });
+  }
+});
 
 // Generate win/loss streaks across all seasons
 async function generateWinLossStreaks(

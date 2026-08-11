@@ -164,19 +164,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
 
       // Check if team had a runner-up record or explicit playoff record in myRecords
       const hasPlayoffRecord = myRecords.some(
-        r => r.season === season && ['runnerUp', 'playoffAppearance'].includes(r.type)
+        r => r.season === season && (
+          ['runnerUp', 'playoffAppearance'].includes(r.type) ||
+          r.type.toLowerCase().includes('playoff') ||
+          r.type.toLowerCase().includes('semifinal')
+        )
       );
 
-      // Treat as a playoff appearance if:
-      // 1. Sleeper marked it directly
+      // Robust playoff appearance check:
+      // 1. Direct upstream Sleeper playoff flag
       // 2. Won championship or regular season title
-      // 3. Has a runner-up or playoff record in historical records
-      // 4. Finished in top playoff positions (e.g. 1 through 6)
-      const PLAYOFF_TEAMS_COUNT = 6; // Set to your league's playoff field size if different
+      // 3. Has a runner-up, playoff, or postseason record entry
+      // 4. Fallback check on final postseason placement (1st through 6th)
+      const PLAYOFF_TEAMS_COUNT = 6;
       const playoffAppearance =
-        s.playoffAppearance ||
-        s.championship ||
-        s.regularSeasonChamp ||
+        Boolean(s.playoffAppearance) ||
+        Boolean(s.championship) ||
+        Boolean(s.regularSeasonChamp) ||
         hasPlayoffRecord ||
         (s.finish > 0 && s.finish <= PLAYOFF_TEAMS_COUNT);
 
