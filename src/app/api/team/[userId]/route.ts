@@ -6,6 +6,7 @@ import { getCurrentLeagueId } from '@/config/league';
 import { generateEnhancedLeagueHistory, type EnhancedLeagueHistory, type EnhancedHistoricalRecord } from '@/lib/enhancedHistoryApi';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 // The full league computation is user-independent and expensive (many Sleeper
 // calls across every linked season), compute it once and serve every manager's
