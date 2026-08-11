@@ -8,7 +8,9 @@ description: "The official rules, bylaws, and governing document of the league."
 
 ### Entry Fee
 
-No entry fee is collected for The Domination League at this time.
+There is an entry fee of $20.
+
+There is a trophy passed from winner to winner each year. Each winner's name is engraved on the trophy. On the 16th year of the league, the trophy will be completely filled. We will go on a league trip to crown the ulitmate winner, the one who has their name engraved the most on the trophy. Each engravement is one vote on the location of the league trip. For the ultimate winner;if there is a tie, points scored throughout the years will break the tie. If a tie remains, overall record will break the tie.
 
 ---
 
@@ -18,7 +20,7 @@ No entry fee is collected for The Domination League at this time.
 
 **Tanking is strictly prohibited.** A manager is considered to be tanking if they intentionally field an inferior lineup (e.g., benching healthy, high-projected starters) for the purpose of losing, whether to secure a higher draft pick, benefit another manager, or for any other strategic reason unrelated to that week's matchup.
 
-A first offense results in a formal warning and mandatory lineup correction if discovered before kickoff. A second offense may result in removal from the league and forfeiture of entry fees at the Commissioner's discretion. Managers have the right to appeal any tanking ruling to the full membership.
+If found tanking, your pick will be lowered by 1 pick.
 
 ### Trades Not Made in Good Faith
 
@@ -41,20 +43,6 @@ Any manager may file a trade protest directly with the Commissioner within the 4
 ### Role & Authority
 
 The Commissioner is responsible for managing the league platform, enforcing this constitution, resolving disputes, and communicating with the membership. All rulings are made in the best interest of the league, not in the Commissioner's personal interest.
-
-### Term & Removal
-
-The Commissioner serves indefinitely until they resign or are removed by a **unanimous vote** of the active membership. A successor is elected by simple majority from among the remaining managers.
-
-### Deputy Commissioner
-
-The Commissioner may appoint a Deputy who may act on the Commissioner's behalf when unavailable. The Deputy holds no independent voting rights. Commissioner Brown has appointed Mr. Zab as Deputy Commissioner of The Domination League.
-
-### Conflicts of Interest
-
-When a ruling directly involves the Commissioner's own team, the Deputy Commissioner shall make the ruling instead.
-
----
 
 ## Disputes & Rulings
 

@@ -160,11 +160,25 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
       const highlights = myRecords
         .filter(r => r.season === season && !['championship', 'runnerUp', 'regularSeasonChamp', 'playoffAppearance'].includes(r.type))
         .map(r => r.description);
-      // Sleeper's poff/rank fields go unpopulated for some league configs, which
-      // leaves the underlying playoffAppearance flag stuck false even in a
-      // championship season. Winning it all or the regular season title can only
-      // happen via the playoffs, so treat either as proof of a playoff appearance.
-      const playoffAppearance = s.playoffAppearance || s.championship || s.regularSeasonChamp;
+
+      // Check if team had a runner-up record or explicit playoff record in myRecords
+      const hasPlayoffRecord = myRecords.some(
+        r => r.season === season && ['runnerUp', 'playoffAppearance'].includes(r.type)
+      );
+
+      // Treat as a playoff appearance if:
+      // 1. Sleeper marked it directly
+      // 2. Won championship or regular season title
+      // 3. Has a runner-up or playoff record in historical records
+      // 4. Finished in top playoff positions (e.g. 1 through 6)
+      const PLAYOFF_TEAMS_COUNT = 6; // Set to your league's playoff field size if different
+      const playoffAppearance =
+        s.playoffAppearance ||
+        s.championship ||
+        s.regularSeasonChamp ||
+        hasPlayoffRecord ||
+        (s.finish > 0 && s.finish <= PLAYOFF_TEAMS_COUNT);
+
       return {
         season,
         wins: s.wins, losses: s.losses, ties: s.ties,
@@ -232,8 +246,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
         championships: stats.championships,
         runnerUps,
         regularSeasonTitles: stats.regularSeasonChampionships,
-        // Recomputed from the corrected per-season flags above, not the raw
-        // (sometimes-broken) career counter.
+        // Recomputed from the corrected per-season flags above
         playoffAppearances: seasons.filter(s => s.playoffAppearance).length,
         bestFinish: stats.bestFinish === Infinity ? 0 : stats.bestFinish,
         worstFinish: Math.max(0, ...seasons.map(s => s.finish).filter(f => f > 0)),
