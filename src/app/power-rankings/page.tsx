@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import type { PowerRankingEntry } from '@/lib/powerRankings';
 
 export default function PowerRankingsPage() {
-  const seasonsList = ['2026', '2025', '2024', '2023', '2022', '2021'];
+  const seasonsList = ['2026', '2025', '2024', '2023', '2022'];
   const [season, setSeason] = useState('2026');
   const [rankings, setRankings] = useState<PowerRankingEntry[]>([]);
   const [loading, setLoading] = useState(true);
