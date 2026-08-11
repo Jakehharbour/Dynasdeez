@@ -31,7 +31,12 @@ const MAX_POSTS = 300;
 
 let redis: any = null;
 try {
-  const url = process.env.REDIS_URL;
+  // Checks dynasdeezstorage_REDIS_URL first, then REDIS_URL, then KV_URL
+  const url = 
+    process.env.dynasdeezstorage_REDIS_URL || 
+    process.env.REDIS_URL || 
+    process.env.KV_URL;
+
   if (url && !url.includes('your-redis')) {
     const { createClient } = require('redis');
     redis = createClient({ url });
