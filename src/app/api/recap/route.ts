@@ -14,7 +14,8 @@ interface Matchup {
   awayScore: number;
 }
 
-interface Transaction {
+interface TransactionItem {
+  type: 'waiver' | 'trade';
   details: string;
 }
 
@@ -22,6 +23,24 @@ interface Stats {
   highest: { team: string; score: number };
   lowest: { team: string; score: number };
   biggestBlowout: { winner: string; loser: string; margin: number };
+}
+
+// Helper: Fetch Sleeper players dictionary to resolve player IDs to names
+async function getPlayersMap(): Promise<Map<string, string>> {
+  const playerMap = new Map<string, string>();
+  try {
+    const res = await fetch('https://api.sleeper.app/v1/players/nfl');
+    if (res.ok) {
+      const data = await res.json();
+      for (const [id, info] of Object.entries(data as Record<string, any>)) {
+        const fullName = info?.full_name || info?.search_full_name || id;
+        playerMap.set(id, fullName);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch Sleeper players map:', error);
+  }
+  return playerMap;
 }
 
 // 1. Get Current League State from Sleeper API
@@ -56,7 +75,8 @@ async function getTeamNamesMap(leagueId: string): Promise<Map<number, string>> {
 
   const userMap = new Map<string, string>();
   users.forEach((u: any) => {
-    const name = u.metadata?.team_name || u.display_name || u.username;
+    const metadata = u.metadata as { team_name?: string } | undefined;
+    const name = metadata?.team_name || u.display_name || u.username;
     userMap.set(u.user_id, name);
   });
 
@@ -108,27 +128,62 @@ async function getWeeklyMatchups(
 async function getWeeklyTransactions(
   leagueId: string,
   week: number,
-  teamNamesMap: Map<number, string>
-): Promise<Transaction[]> {
+  teamNamesMap: Map<number, string>,
+  playerMap: Map<string, string>
+): Promise<TransactionItem[]> {
   const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/transactions/${week}`);
   if (!res.ok) return [];
 
   const data = await res.json();
   if (!data || !Array.isArray(data)) return [];
 
-  return data.map((t: any) => {
-    const teamName = teamNamesMap.get(t.roster_ids?.[0]) || 'A team';
-    let details = `${teamName} completed a transaction.`;
+  const transactions: TransactionItem[] = [];
 
+  data.forEach((t: any) => {
     if (t.type === 'trade') {
-      const teams = t.roster_ids?.map((id: number) => teamNamesMap.get(id) || `Team ${id}`).join(' and ');
-      details = `Trade completed between ${teams}.`;
-    } else if (t.type === 'waiver') {
-      details = `${teamName} added a player via waiver claim ($${t.settings?.waiver_bid || 0} FAB).`;
-    }
+      const teamNames = t.roster_ids?.map((id: number) => teamNamesMap.get(id) || `Team ${id}`) || [];
+      const adds = t.adds || {};
+      const tradedAssets = Object.entries(adds)
+        .map(([playerId, rosterId]) => {
+          const playerName = playerMap.get(playerId) || playerId;
+          const targetTeam = teamNamesMap.get(Number(rosterId)) || 'a team';
+          return `${playerName} to ${targetTeam}`;
+        })
+        .join(', ');
 
-    return { details };
+      transactions.push({
+        type: 'trade',
+        details: `Trade between ${teamNames.join(' and ')} involving: ${tradedAssets || 'various assets'}.`,
+      });
+    } else {
+      const primaryRosterId = t.roster_ids?.[0];
+      const teamName = teamNamesMap.get(primaryRosterId) || 'A team';
+      
+      const addedIds = Object.keys(t.adds || {});
+      const droppedIds = Object.keys(t.drops || {});
+
+      const addedNames = addedIds.map((id) => playerMap.get(id) || id);
+      const droppedNames = droppedIds.map((id) => playerMap.get(id) || id);
+
+      let detailStr = '';
+      if (addedNames.length > 0 && droppedNames.length > 0) {
+        detailStr = `${teamName} claimed ${addedNames.join(', ')} and dropped ${droppedNames.join(', ')}.`;
+      } else if (addedNames.length > 0) {
+        detailStr = `${teamName} claimed ${addedNames.join(', ')}${t.settings?.waiver_bid ? ` ($${t.settings.waiver_bid} FAB)` : ''}.`;
+      } else if (droppedNames.length > 0) {
+        detailStr = `${teamName} dropped ${droppedNames.join(', ')}.`;
+      } else {
+        detailStr = `${teamName} made a roster transaction.`;
+      }
+
+      transactions.push({
+        type: 'waiver',
+        details: detailStr,
+      });
+    }
   });
+
+  return transactions;
 }
 
 // 5. Calculate Highs, Lows, and Margins
@@ -146,15 +201,12 @@ function calculateStats(matchups: Matchup[]): Stats {
   }
 
   matchups.forEach((m) => {
-    // Highest Score
     if (m.homeScore > highest.score) highest = { team: m.homeTeam, score: m.homeScore };
     if (m.awayScore > highest.score) highest = { team: m.awayTeam, score: m.awayScore };
 
-    // Lowest Score
     if (m.homeScore < lowest.score) lowest = { team: m.homeTeam, score: m.homeScore };
     if (m.awayScore < lowest.score) lowest = { team: m.awayTeam, score: m.awayScore };
 
-    // Biggest Blowout (Fixed loser assignment)
     const margin = Math.abs(m.homeScore - m.awayScore);
     if (margin > biggestBlowout.margin) {
       const winner = m.homeScore > m.awayScore ? m.homeTeam : m.awayTeam;
@@ -174,16 +226,20 @@ async function generateAiRecap(
   currentWeek: number,
   matchups: Matchup[],
   upcomingMatchups: Matchup[],
-  transactions: Transaction[],
+  transactions: TransactionItem[],
   stats: Stats
 ) {
+  const waiverItems = transactions.filter((t) => t.type === 'waiver').map((t) => t.details);
+  const tradeItems = transactions.filter((t) => t.type === 'trade').map((t) => t.details);
+
   const fallback = {
     generalRecap: `Week ${pastWeek} was wild! ${stats.highest.team} took top honors with ${stats.highest.score} points, while ${stats.lowest.team} fell short.`,
     matchRecaps: matchups.map((m) => ({
       matchup: `${m.homeTeam} vs ${m.awayTeam}`,
       recap: `${m.homeScore > m.awayScore ? m.homeTeam : m.awayTeam} picked up the win.`,
     })),
-    transactionSummary: transactions.map((t) => t.details).join(' ') || 'No transactions completed.',
+    waiverSummary: waiverItems.length > 0 ? waiverItems : ['No waiver moves made this week.'],
+    tradeSummary: tradeItems.length > 0 ? tradeItems.map(t => `${t} This helps both teams adjust their depth.`) : ['No trades completed this week.'],
     previews: upcomingMatchups.map((m) => ({
       matchup: `${m.homeTeam} vs ${m.awayTeam}`,
       storyline: `A big battle coming up in Week ${currentWeek}.`,
@@ -191,30 +247,35 @@ async function generateAiRecap(
   };
 
   if (!process.env.GROQ_API_KEY) {
-    console.warn('GROQ_API_KEY is missing. Returning fallback recap data.');
     return fallback;
   }
 
   const prompt = `
-    You are a hilarious, witty fantasy football league commissioner. Write a fun, trash-talking weekly recap based on these stats.
+    You are a hilarious, witty fantasy football league commissioner. Write a fun weekly recap based on these stats.
 
     Data for Week ${pastWeek}:
     - Highest Score: ${stats.highest.team} (${stats.highest.score} pts)
     - Lowest Score: ${stats.lowest.team} (${stats.lowest.score} pts)
     - Biggest Blowout: ${stats.biggestBlowout.winner} beat ${stats.biggestBlowout.loser} by ${stats.biggestBlowout.margin.toFixed(1)} pts
     - Matchup Scores: ${JSON.stringify(matchups)}
-    - Waiver/Trade moves: ${JSON.stringify(transactions)}
+    - Raw Waivers: ${JSON.stringify(waiverItems)}
+    - Raw Trades: ${JSON.stringify(tradeItems)}
     - Next Week (${currentWeek}) Matchups: ${JSON.stringify(upcomingMatchups)}
 
     Output STRICT JSON matching this exact format:
     {
       "generalRecap": "A funny paragraph summarizing Week ${pastWeek}.",
       "matchRecaps": [
-        { "matchup": "Team A vs Team B", "recap": "A short 2-sentence humorous summary of the game." }
+        { "matchup": "Team A vs Team B", "recap": "A short humorous summary of the game." }
       ],
-      "transactionSummary": "A short sentence poking fun at waiver or trade activity.",
+      "waiverSummary": [
+        "A bulleted string summarizing a specific waiver claim."
+      ],
+      "tradeSummary": [
+        "A bulleted string explaining a trade and analyzing how it helps each team involved."
+      ],
       "previews": [
-        { "matchup": "Team A vs Team B", "storyline": "A short 2-sentence hype preview for Week ${currentWeek}." }
+        { "matchup": "Team A vs Team B", "storyline": "A short hype preview for Week ${currentWeek}." }
       ]
     }
   `;
@@ -253,13 +314,15 @@ export async function GET() {
     const { currentWeek } = await getLeagueState(leagueId);
     const pastWeek = Math.max(1, currentWeek - 1);
 
-    const teamNamesMap = await getTeamNamesMap(leagueId);
+    const [teamNamesMap, playerMap] = await Promise.all([
+      getTeamNamesMap(leagueId),
+      getPlayersMap(),
+    ]);
 
-    // Fetch past matchups, upcoming matchups, and transactions concurrently
     const [pastMatchups, upcomingMatchups, transactions] = await Promise.all([
       getWeeklyMatchups(leagueId, pastWeek, teamNamesMap),
       getWeeklyMatchups(leagueId, currentWeek, teamNamesMap),
-      getWeeklyTransactions(leagueId, pastWeek, teamNamesMap),
+      getWeeklyTransactions(leagueId, pastWeek, teamNamesMap, playerMap),
     ]);
 
     const stats = calculateStats(pastMatchups);
