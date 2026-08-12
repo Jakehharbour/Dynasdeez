@@ -61,9 +61,9 @@ function emptyEntry(): H2HEntry {
 }
 
 export async function fetchRivalriesData(): Promise<RivalriesResponse> {
-  const baseLeagueId = INITIAL_LEAGUE_ID ?? (await getCurrentLeagueId());
   const currentLeagueId = await getCurrentLeagueId();
-  const allLeagueIds = await getAllLinkedLeagueIds(baseLeagueId);
+  const baseLeagueId = INITIAL_LEAGUE_ID ?? currentLeagueId;
+  const allLeagueIds = await getAllLinkedLeagueIds(currentLeagueId);
 
   // 1. Fetch current league users first so we have the absolute latest names & avatars
   const currentUsers = await getLeagueUsers(currentLeagueId);
@@ -214,9 +214,9 @@ export async function fetchRivalriesData(): Promise<RivalriesResponse> {
         ensure(u1, u2);
         ensure(u2, u1);
 
-        h2h[u1][u2].pointsFor     += s1;
+        h2h[u1][u2].pointsFor    += s1;
         h2h[u1][u2].pointsAgainst += s2;
-        h2h[u2][u1].pointsFor     += s2;
+        h2h[u2][u1].pointsFor    += s2;
         h2h[u2][u1].pointsAgainst += s1;
 
         if (s1 > s2)      { h2h[u1][u2].wins++;   h2h[u2][u1].losses++; }

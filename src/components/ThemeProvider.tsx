@@ -9,9 +9,12 @@ export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
       attribute="class"
       defaultTheme="light"
       enableSystem={false}
+      scriptProps={{
+        type: 'application/json', // Prevents React 19 script execution warning
+      }}
       {...props}
     >
       {children}
     </NextThemesProvider>
   );
-} 
+}

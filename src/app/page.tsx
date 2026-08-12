@@ -72,22 +72,47 @@ async function calculateHistoricalInsights(seasons: string[], currentLeagueId: s
   try {
     const linkedLeagues = await getAllLinkedLeagueIds(currentLeagueId);
     const historyData   = await generateComprehensiveLeagueHistory(linkedLeagues);
-    const totalTeams    = historyData.seasonAnalyses.reduce((s: number, season: any) => s + season.rosters.length, 0);
+    
+    const seasonAnalyses = historyData.seasonAnalyses || [];
+    
+    let calculatedTotalGames = 0;
+    let calculatedHighestScore = historyData.allTimeStats?.highestScore || 0;
+
+    seasonAnalyses.forEach((season: any) => {
+      if (season.matchups) {
+        Object.values(season.matchups).forEach((weekMatchups: any) => {
+          if (Array.isArray(weekMatchups)) {
+            // Sleeper stores two records per matchup (one per team), so we divide by 2 for actual games played
+            calculatedTotalGames += weekMatchups.length / 2;
+            weekMatchups.forEach((m: any) => {
+              if (typeof m.points === 'number' && m.points > calculatedHighestScore) {
+                calculatedHighestScore = m.points;
+              }
+            });
+          }
+        });
+      }
+    });
+
+    const totalGames = calculatedTotalGames > 0 ? calculatedTotalGames : (historyData.allTimeStats?.totalGames || 0);
+    const totalTeams = seasonAnalyses.reduce((s: number, season: any) => s + (season.rosters?.length || 0), 0);
     const uniqueChampions = new Set<string>();
-    historyData.seasonAnalyses.forEach((season: any) =>
-      season.champions.forEach((c: any) => uniqueChampions.add(c.owner_id)),
+    
+    seasonAnalyses.forEach((season: any) =>
+      season.champions?.forEach((c: any) => uniqueChampions.add(c.owner_id)),
     );
+
     return {
-      totalSeasons:          historyData.allTimeStats.totalSeasons,
+      totalSeasons:           historyData.allTimeStats?.totalSeasons || seasons.length,
       totalTeams,
-      totalGames:            historyData.allTimeStats.totalGames,
-      champions:             historyData.records.filter((r: any) => r.type === 'championship'),
-      uniqueChampionsCount:  uniqueChampions.size,
-      highestScore:          historyData.allTimeStats.highestScore,
-      lowestScore:           historyData.allTimeStats.lowestScore,
-      averageScore:          historyData.allTimeStats.averageScore,
-      totalPoints:           historyData.allTimeStats.totalPoints,
-      seasonAnalyses:        historyData.seasonAnalyses,
+      totalGames,
+      champions:              historyData.records?.filter((r: any) => r.type === 'championship') || [],
+      uniqueChampionsCount:   uniqueChampions.size,
+      highestScore:           calculatedHighestScore,
+      lowestScore:            historyData.allTimeStats?.lowestScore || 0,
+      averageScore:           historyData.allTimeStats?.averageScore || 0,
+      totalPoints:            historyData.allTimeStats?.totalPoints || 0,
+      seasonAnalyses,
     };
   } catch {
     return { totalSeasons: seasons.length, totalTeams: 0, totalGames: 0, champions: [], uniqueChampionsCount: 0, highestScore: 0, lowestScore: 0, averageScore: 0, totalPoints: 0, seasonAnalyses: [] };
@@ -353,7 +378,7 @@ export default function Home() {
               <span>{league.scoring_settings?.rec ? 'PPR' : 'Standard'}</span>
             </div>
 
-            {spotlight && (
+       {spotlight && (
               <Link href={`/team/${spotlight.userId}`} className="group mt-5 flex items-center gap-4">
                 <Avatar avatarId={spotlight.avatar} size={52} className="shrink-0 rounded-xl" />
                 <div className="min-w-0">
@@ -371,11 +396,16 @@ export default function Home() {
             )}
 
             {historyData && historyData.totalSeasons > 0 && (
-              <div className="mt-6 grid grid-cols-2 gap-y-4 border-t border-border pt-5 sm:grid-cols-4">
-                <PulseStat label="Seasons"       value={String(historyData.totalSeasons)} />
-                <PulseStat label="Games"         value={historyData.totalGames.toLocaleString()} />
-                <PulseStat label="Best Score"    value={formatPoints(historyData.highestScore)} />
-                <PulseStat label="Champions"     value={String(historyData.uniqueChampionsCount)} />
+              <div className="mt-6 border-t border-border pt-5">
+                <h3 className="mb-3 font-display text-sm font-bold uppercase tracking-wider text-foreground">
+                  Dynasdeez League Stats
+                </h3>
+                <div className="grid grid-cols-2 gap-y-4 sm:grid-cols-4">
+                  <PulseStat label="Seasons"      value={String(historyData.totalSeasons)} />
+                  <PulseStat label="Games"        value={historyData.totalGames.toLocaleString()} />
+                  <PulseStat label="Best Score"   value={formatPoints(historyData.highestScore)} />
+                  <PulseStat label="Champions"    value={String(historyData.uniqueChampionsCount)} />
+                </div>
               </div>
             )}
           </div>

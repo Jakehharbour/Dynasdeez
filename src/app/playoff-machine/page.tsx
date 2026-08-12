@@ -11,9 +11,10 @@ export default async function PlayoffMachinePage() {
     getLeagueRosters(leagueId),
   ]);
 
-  const userMap = new Map(users.map((u: any) => [u.user_id, u.display_name || u.username || 'Manager']));
+  const userMap = new Map(users.map((u: any) => [u.user_id, u]));
 
   const initialTeams = rosters.map((r: any) => {
+    const user = userMap.get(r.owner_id) as any;
     const wins = r.settings?.wins ?? 0;
     const losses = r.settings?.losses ?? 0;
     const ties = r.settings?.ties ?? 0;
@@ -21,8 +22,8 @@ export default async function PlayoffMachinePage() {
 
     return {
       rosterId: r.roster_id,
-      ownerName: userMap.get(r.owner_id) || `Team ${r.roster_id}`,
-      avatar: userMap.get(r.owner_id)?.avatar || '',
+      ownerName: user?.display_name || user?.username || `Team ${r.roster_id}`,
+      avatar: user?.avatar || '',
       wins,
       losses,
       ties,
@@ -71,10 +72,19 @@ export default async function PlayoffMachinePage() {
   });
 
   return (
-    <PlayoffMachine 
-      initialTeams={initialTeams} 
-      futureMatchups={futureMatchups} 
-      playoffSpotCount={leagueInfo?.settings?.playoff_teams || 6} 
-    />
+    <div className="max-w-6xl mx-auto p-6 space-y-6 bg-background text-foreground min-h-screen">
+      <header className="space-y-1">
+        <h1 className="text-3xl font-extrabold tracking-tight">Playoff Machine</h1>
+        <p className="text-muted-foreground">Simulate remaining matchups to see playoff seeding scenarios</p>
+      </header>
+
+      <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+        <PlayoffMachine 
+          initialTeams={initialTeams} 
+          futureMatchups={futureMatchups} 
+          playoffSpotCount={leagueInfo?.settings?.playoff_teams || 6} 
+        />
+      </div>
+    </div>
   );
 }

@@ -51,50 +51,50 @@ export default function PlayoffMachine({
   }, [activeMatchups]);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8">
+    <div className="p-6 max-w-7xl mx-auto space-y-8 bg-background text-foreground min-h-screen">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Playoff Machine</h1>
-          <p className="text-gray-400">Pick future matchup winners to simulate playoff seeding.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">Playoff Machine</h1>
+          <p className="text-muted-foreground">Pick future matchup winners to simulate playoff seeding.</p>
         </div>
         <button
           onClick={handleReset}
-          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition"
+          className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-lg text-sm font-medium transition shadow-sm"
         >
           Reset All Picks
         </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 bg-gray-900 p-6 rounded-xl border border-gray-800">
-          <h2 className="text-xl font-bold mb-4">Projected Standings</h2>
+        <div className="lg:col-span-1 bg-card p-6 rounded-xl border border-border shadow-sm">
+          <h2 className="text-xl font-bold mb-4 text-foreground">Projected Standings</h2>
           <div className="space-y-2">
             {simulatedStandings.map((team) => {
               const isPlayoffBound = (team.seed ?? 99) <= playoffSpotCount;
               return (
                 <div
                   key={team.rosterId}
-                  className={`flex items-center justify-between p-3 rounded-lg border ${
+                  className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
                     isPlayoffBound
-                      ? 'bg-green-950/30 border-green-800/50'
-                      : 'bg-gray-800/40 border-gray-700/50'
+                      ? 'bg-green-500/10 border-green-500/30 dark:bg-green-950/30 dark:border-green-800/50'
+                      : 'bg-muted/40 border-border'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
                     <span
                       className={`w-6 h-6 flex items-center justify-center text-xs font-bold rounded-full ${
-                        isPlayoffBound ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300'
+                        isPlayoffBound ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground'
                       }`}
                     >
                       {team.seed}
                     </span>
                     <div>
-                      <p className="font-semibold text-sm">{team.ownerName}</p>
-                      <p className="text-xs text-gray-400">{team.pointsFor.toFixed(1)} PF</p>
+                      <p className="font-semibold text-sm text-foreground">{team.ownerName}</p>
+                      <p className="text-xs text-muted-foreground">{team.pointsFor.toFixed(1)} PF</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="font-mono font-bold text-sm">
+                    <span className="font-mono font-bold text-sm text-foreground">
                       {team.wins}-{team.losses}
                     </span>
                   </div>
@@ -106,8 +106,8 @@ export default function PlayoffMachine({
 
         <div className="lg:col-span-2 space-y-6">
           {Object.entries(matchupsByWeek).map(([week, weekMatchups]) => (
-            <div key={week} className="bg-gray-900 p-6 rounded-xl border border-gray-800">
-              <h3 className="text-lg font-bold mb-4">Week {week}</h3>
+            <div key={week} className="bg-card p-6 rounded-xl border border-border shadow-sm">
+              <h3 className="text-lg font-bold mb-4 text-foreground">Week {week}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {weekMatchups.map((m) => {
                   const t1Name = initialTeams.find((t) => t.rosterId === m.team1.rosterId)?.ownerName || 'Team 1';
@@ -117,13 +117,13 @@ export default function PlayoffMachine({
                   const isT2Picked = m.simulatedWinnerId === m.team2.rosterId;
 
                   return (
-                    <div key={m.matchupId} className="bg-gray-800/60 p-3 rounded-lg space-y-2 border border-gray-700/50">
+                    <div key={m.matchupId} className="bg-muted/40 p-3 rounded-lg space-y-2 border border-border">
                       <button
                         onClick={() => handleSelectWinner(m.matchupId, m.team1.rosterId)}
                         className={`w-full flex justify-between items-center p-2 rounded text-sm font-medium transition ${
                           isT1Picked
-                            ? 'bg-blue-600 text-white font-bold'
-                            : 'bg-gray-700/50 hover:bg-gray-700 text-gray-200'
+                            ? 'bg-primary text-primary-foreground font-bold shadow-sm'
+                            : 'bg-background hover:bg-muted text-foreground border border-border/60'
                         }`}
                       >
                         <span>{t1Name}</span>
@@ -134,8 +134,8 @@ export default function PlayoffMachine({
                         onClick={() => handleSelectWinner(m.matchupId, m.team2.rosterId)}
                         className={`w-full flex justify-between items-center p-2 rounded text-sm font-medium transition ${
                           isT2Picked
-                            ? 'bg-blue-600 text-white font-bold'
-                            : 'bg-gray-700/50 hover:bg-gray-700 text-gray-200'
+                            ? 'bg-primary text-primary-foreground font-bold shadow-sm'
+                            : 'bg-background hover:bg-muted text-foreground border border-border/60'
                         }`}
                       >
                         <span>{t2Name}</span>

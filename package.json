@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.74",
+    "@google/genai": "^2.16.0",
     "@heroicons/react": "^2.2.0",
     "@mozilla/readability": "^0.6.0",
     "@radix-ui/react-select": "^2.1.4",
@@ -27,6 +28,7 @@
     "fast-xml-parser": "^5.10.1",
     "framer-motion": "^11.18.2",
     "gray-matter": "^4.0.3",
+    "groq-sdk": "^1.5.0",
     "jsdom": "^29.1.1",
     "lucide-react": "^0.469.0",
     "marked": "^18.0.5",

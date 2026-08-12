@@ -21,6 +21,7 @@ import {
   Menu,
   X,
   Gamepad2,
+  Sparkles,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import Logo from '@/components/ui/Logo';
@@ -35,22 +36,23 @@ interface NavItem {
 }
 
 const PRIMARY_NAV: NavItem[] = [
-  { name: 'Home',           href: '/',               icon: LayoutDashboard },
-  { name: 'Matchups',       href: '/matchups',       icon: Swords          },
+  { name: 'Home',           href: '/',              icon: LayoutDashboard },
+  { name: 'Matchups',       href: '/matchups',      icon: Swords          },
+  { name: 'Recap',          href: '/recap',         icon: Sparkles        },
   { name: 'Power Rankings', href: '/power-rankings', icon: TrendingUp      },
-  { name: 'Rivalries',      href: '/rivalries',      icon: Sword           },
-  { name: 'Next Gen',       href: '/next-gen',       icon: Activity        },
-  { name: 'History',        href: '/history',        icon: Database        },
+  { name: 'Rivalries',      href: '/rivalries',     icon: Sword           },
+  { name: 'Next Gen',       href: '/next-gen',      icon: Activity        },
 ];
 
 const MORE_NAV: NavItem[] = [
-  { name: 'Rosters',         href: '/rosters',         icon: Shirt         },
-  { name: 'Schedule Lab',    href: '/schedule-lab',    icon: Shuffle       },
-  { name: 'Playoff Machine', href: '/playoff-machine', icon: Gamepad2      },
-  { name: 'Transactions',    href: '/transactions',    icon: Receipt       },
-  { name: 'Drafts',          href: '/drafts',          icon: ClipboardList },
-  { name: 'Media',           href: '/media',           icon: Newspaper     },
-  { name: 'Constitution',    href: '/constitution',    icon: Scroll        },
+  { name: 'History',         href: '/history',         icon: Database        },
+  { name: 'Rosters',         href: '/rosters',         icon: Shirt           },
+  { name: 'Schedule Lab',    href: '/schedule-lab',    icon: Shuffle         },
+  { name: 'Playoff Machine', href: '/playoff-machine', icon: Gamepad2        },
+  { name: 'Transactions',    href: '/transactions',    icon: Receipt         },
+  { name: 'Drafts',          href: '/drafts',          icon: ClipboardList   },
+  { name: 'Media',           href: '/media',           icon: Newspaper       },
+  { name: 'Constitution',    href: '/constitution',    icon: Scroll          },
 ];
 
 const ALL_NAV = [...PRIMARY_NAV, ...MORE_NAV];
