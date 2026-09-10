@@ -13,42 +13,22 @@ import type { Personality } from '@/lib/ai/personalities';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-/**
- * Daily batch writer, built for Vercel's Hobby plan.
- *
- * Hobby allows a single cron invocation per day, so posting one piece per run
- * would leave the feed nearly static. Instead this run generates a whole day's
- * worth in one go and staggers each post's publishAt across the following ~22
- * hours. The public feed hides anything not yet due, so readers still see the
- * desk trickle content out through the day.
- *
- * Every value is env-tunable, so cadence and spend change without a code edit.
- */
 const num = (key: string, fallback: number) => {
   const v = Number(process.env[key]);
   return Number.isFinite(v) && v >= 0 ? v : fallback;
 };
 
-/** Pieces written per daily run. */
-const POSTS_PER_RUN   = Math.min(num('AI_POSTS_PER_DAY', 4), 8);
-/** How many of those are long-form. Articles use the pricier model, so this is
- *  the main cost lever. */
+const POSTS_PER_RUN    = Math.min(num('AI_POSTS_PER_DAY', 4), 8);
 const ARTICLES_PER_RUN = Math.min(num('AI_ARTICLES_PER_DAY', 1), POSTS_PER_RUN);
-/** Window the batch is spread across. */
-const SPREAD_HOURS    = num('AI_SPREAD_HOURS', 22);
-/** Guard against a double-trigger writing two batches the same day. */
-const RERUN_GUARD_MS  = num('AI_RERUN_GUARD_HOURS', 12) * 60 * 60 * 1000;
+const SPREAD_HOURS     = num('AI_SPREAD_HOURS', 22);
+const RERUN_GUARD_MS   = num('AI_RERUN_GUARD_HOURS', 12) * 60 * 60 * 1000;
 
 function authorized(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true; // unset locally so the admin panel can trigger it
+  if (!secret) return true;
   return request.headers.get('authorization') === `Bearer ${secret}`;
 }
 
-/** Randomised, strictly increasing publish times across the window. The first
- *  entry is exact so a fresh batch always has something readable right away;
- *  everything after it is jittered inside its slot so spacing never looks
- *  mechanical. */
 function scheduleTimes(count: number, startAt: number): number[] {
   const window = SPREAD_HOURS * 60 * 60 * 1000;
   const slot = window / count;
@@ -59,25 +39,6 @@ function scheduleTimes(count: number, startAt: number): number[] {
 
 function pick<T>(list: T[]): T {
   return list[Math.floor(Math.random() * list.length)];
-}
-
-/**
- * Placeholder helper to fetch fresh league data (trades, matchups, transactions)
- * from your fantasy platform API so Claude has actual context instead of defaults.
- */
-async function fetchLatestLeagueContext(): Promise<string> {
-  try {
-    // Replace or integrate your actual fantasy API fetch logic here (e.g., Sleeper, ESPN, etc.)
-    // Example: const res = await fetch('https://api.sleeper.app/v1/league/YOUR_LEAGUE_ID/transactions/1');
-    // const data = await res.json();
-    // return JSON.stringify(data);
-    
-    // For now, return a placeholder string showing current real-world state or date context
-    return `Current date: ${new Date().toLocaleDateString()}. Recent league updates: Check recent trades, matchup results, and roster changes.`;
-  } catch (err) {
-    console.error('[api/ai/cron] Failed to fetch league context:', err);
-    return '';
-  }
 }
 
 export async function GET(request: Request) {
@@ -106,19 +67,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ skipped: 'no-personality-writes-these-kinds' });
   }
 
-  // Fetch the fresh league activity context before generating content
-  const leagueContext = await fetchLatestLeagueContext();
-
-  // Queue behind anything still pending so a re-run does not bunch up, but
-  // when nothing is pending start immediately: offsetting the first post left
-  // the feed reading "nothing filed yet" for an hour after every fresh run.
   const pendingUntil = await lastPublishAt();
   const hasBacklog = pendingUntil > Date.now();
   const startAt = hasBacklog ? pendingUntil + 60_000 : Date.now();
   const times = scheduleTimes(POSTS_PER_RUN, startAt);
 
   const plan: { kind: 'article' | 'tweet'; persona: Personality }[] = [];
-  // Spread each persona around rather than letting one dominate the day.
   const rotation = [...people].sort(() => Math.random() - 0.5);
   for (let i = 0; i < POSTS_PER_RUN; i++) {
     const wantArticle = i < ARTICLES_PER_RUN && articleWriters.length > 0;
@@ -133,10 +87,10 @@ export async function GET(request: Request) {
   for (let i = 0; i < plan.length; i++) {
     const { kind, persona } = plan[i];
     try {
-      // Pass the fresh leagueContext into the generation functions so Claude has real data
+      // Calls generator natively utilizing buildLeagueBrief() and avoids repetitive topics per run
       const content = kind === 'article' 
-        ? await writeArticle(persona, leagueContext) 
-        : await writeTweet(persona, leagueContext);
+        ? await writeArticle(persona) 
+        : await writeTweet(persona);
 
       const post: FeedPost = {
         id: `${Date.now()}-${persona.id}-${i}`,
@@ -150,14 +104,13 @@ export async function GET(request: Request) {
         publishAt: new Date(times[i]).toISOString(),
         source: 'cron',
       };
-      // Written one at a time so a later failure never discards earlier work.
+
       await addPost(post);
       written.push({ kind, persona: persona.name, publishAt: post.publishAt });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[api/ai/cron] ${persona.name}/${kind} failed:`, msg);
       failures.push(`${persona.name}/${kind}: ${msg}`);
-      // A storage failure will hit every remaining item, so stop early.
       if (/storage is not writable/i.test(msg)) break;
     }
   }
