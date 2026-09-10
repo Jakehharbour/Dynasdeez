@@ -87,10 +87,18 @@ export async function GET(request: Request) {
   for (let i = 0; i < plan.length; i++) {
     const { kind, persona } = plan[i];
     try {
-      // Calls generator natively utilizing buildLeagueBrief() and avoids repetitive topics per run
+      // Dynamic topic injection forcing variety per post generation slot
+      const topics = [
+        'Focus specifically on recent head-to-head matchup outcomes, close scores, or blowouts from the latest slate.',
+        'Focus strictly on waiver wire claims, recent player movement, or roster additions across the league.',
+        'Focus on team standing shifts, points for/against standings anomalies, or playoff race positioning.',
+        'Focus on standout individual player performances or underperforming stars based on current stats.'
+      ];
+      const assignedTopic = topics[i % topics.length];
+
       const content = kind === 'article' 
-        ? await writeArticle(persona) 
-        : await writeTweet(persona);
+        ? await writeArticle(persona, assignedTopic) 
+        : await writeTweet(persona, assignedTopic);
 
       const post: FeedPost = {
         id: `${Date.now()}-${persona.id}-${i}`,
