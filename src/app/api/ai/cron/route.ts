@@ -61,6 +61,25 @@ function pick<T>(list: T[]): T {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+/**
+ * Placeholder helper to fetch fresh league data (trades, matchups, transactions)
+ * from your fantasy platform API so Claude has actual context instead of defaults.
+ */
+async function fetchLatestLeagueContext(): Promise<string> {
+  try {
+    // Replace or integrate your actual fantasy API fetch logic here (e.g., Sleeper, ESPN, etc.)
+    // Example: const res = await fetch('https://api.sleeper.app/v1/league/YOUR_LEAGUE_ID/transactions/1');
+    // const data = await res.json();
+    // return JSON.stringify(data);
+    
+    // For now, return a placeholder string showing current real-world state or date context
+    return `Current date: ${new Date().toLocaleDateString()}. Recent league updates: Check recent trades, matchup results, and roster changes.`;
+  } catch (err) {
+    console.error('[api/ai/cron] Failed to fetch league context:', err);
+    return '';
+  }
+}
+
 export async function GET(request: Request) {
   if (!authorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -87,6 +106,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ skipped: 'no-personality-writes-these-kinds' });
   }
 
+  // Fetch the fresh league activity context before generating content
+  const leagueContext = await fetchLatestLeagueContext();
+
   // Queue behind anything still pending so a re-run does not bunch up, but
   // when nothing is pending start immediately: offsetting the first post left
   // the feed reading "nothing filed yet" for an hour after every fresh run.
@@ -111,7 +133,11 @@ export async function GET(request: Request) {
   for (let i = 0; i < plan.length; i++) {
     const { kind, persona } = plan[i];
     try {
-      const content = kind === 'article' ? await writeArticle(persona) : await writeTweet(persona);
+      // Pass the fresh leagueContext into the generation functions so Claude has real data
+      const content = kind === 'article' 
+        ? await writeArticle(persona, leagueContext) 
+        : await writeTweet(persona, leagueContext);
+
       const post: FeedPost = {
         id: `${Date.now()}-${persona.id}-${i}`,
         personalityId: persona.id,
