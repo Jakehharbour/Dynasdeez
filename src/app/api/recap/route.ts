@@ -236,7 +236,7 @@ async function generateAiRecap(
     generalRecap: `Week ${pastWeek} was wild! ${stats.highest.team} took top honors with ${stats.highest.score} points, while ${stats.lowest.team} fell short.`,
     matchRecaps: matchups.map((m) => ({
       matchup: `${m.homeTeam} vs ${m.awayTeam}`,
-      recap: `${m.homeScore > m.awayScore ? m.homeTeam : m.awayTeam} picked up the win.`,
+      recap: `${m.homeScore > m.awayScore ? m.homeTeam : m.awayTeam} picked up the win with a final score of ${m.homeScore} to ${m.awayScore}.`,
     })),
     waiverSummary: waiverItems.length > 0 ? waiverItems : ['No waiver moves made this week.'],
     tradeSummary: tradeItems.length > 0 ? tradeItems.map(t => `${t} This helps both teams adjust their depth.`) : ['No trades completed this week.'],
@@ -251,31 +251,46 @@ async function generateAiRecap(
   }
 
   const prompt = `
-    You are a hilarious, witty fantasy football league commissioner. Write a fun weekly recap based on these stats.
+    You are an opinionated, hilarious, and narrative-driven fantasy football sports columnist and league commissioner writing the official weekly recap for Week ${pastWeek} and preview for Week ${currentWeek}.
 
-    Data for Week ${pastWeek}:
-    - Highest Score: ${stats.highest.team} (${stats.highest.score} pts)
-    - Lowest Score: ${stats.lowest.team} (${stats.lowest.score} pts)
-    - Biggest Blowout: ${stats.biggestBlowout.winner} beat ${stats.biggestBlowout.loser} by ${stats.biggestBlowout.margin.toFixed(1)} pts
+    CRITICAL WRITING INSTRUCTIONS:
+    1. DO NOT write simple one-sentence summaries. Write rich, multi-sentence narrative breakdowns filled with storyline drama, banter, and tactical analysis.
+    2. Analyze the score margins carefully to create dramatic narrative hooks:
+       - If a game was decided by less than 5 points, frame it as an agonizing heartbreak or heroic robbery.
+       - If a game was a blowout (margin over 25 points), roast the losing team for their embarrassing effort.
+       - Highlight high-scoring shootouts versus ugly low-scoring rock fights.
+    3. For trades and waivers, analyze who won or lost the move and how it changes their team's trajectory.
+    4. For upcoming matchups, frame them with stakes: revenge games, battle for first place, desperation bowl for bottom feeders, etc.
+
+    LEAGUE DATA FOR WEEK ${pastWeek}:
+    - High Scorer of the Week: ${stats.highest.team} (${stats.highest.score} pts)
+    - Low Scorer of the Week: ${stats.lowest.team} (${stats.lowest.score} pts)
+    - Largest Blowout: ${stats.biggestBlowout.winner} crushed ${stats.biggestBlowout.loser} by ${stats.biggestBlowout.margin.toFixed(1)} pts
     - Matchup Scores: ${JSON.stringify(matchups)}
-    - Raw Waivers: ${JSON.stringify(waiverItems)}
-    - Raw Trades: ${JSON.stringify(tradeItems)}
+    - Waiver Transactions: ${JSON.stringify(waiverItems)}
+    - Trade Transactions: ${JSON.stringify(tradeItems)}
     - Next Week (${currentWeek}) Matchups: ${JSON.stringify(upcomingMatchups)}
 
-    Output STRICT JSON matching this exact format:
+    Output STRICT JSON matching this exact structure:
     {
-      "generalRecap": "A funny paragraph summarizing Week ${pastWeek}.",
+      "generalRecap": "A full, dramatic 2-3 paragraph column summarizing the biggest storylines, triumphs, and total disasters of Week ${pastWeek}.",
       "matchRecaps": [
-        { "matchup": "Team A vs Team B", "recap": "A short humorous summary of the game." }
+        {
+          "matchup": "Team A vs Team B",
+          "recap": "A thorough, 3-5 sentence breakdown of the game. Mention the exact scores (${matchups.map(m => `${m.homeTeam}:${m.homeScore}, ${m.awayTeam}:${m.awayScore}`).join(' | ')}), analyze the margin, praise the winner, and poke fun at the loser."
+        }
       ],
       "waiverSummary": [
-        "A bulleted string summarizing a specific waiver claim."
+        "Detailed analysis of a waiver move: who was added/dropped, how much FAB was spent, and whether this move was genius or desperation."
       ],
       "tradeSummary": [
-        "A bulleted string explaining a trade and analyzing how it helps each team involved."
+        "In-depth breakdown of a trade: analyze which team won the trade, the strategy behind it, and how it shifts league power dynamics."
       ],
       "previews": [
-        { "matchup": "Team A vs Team B", "storyline": "A short hype preview for Week ${currentWeek}." }
+        {
+          "matchup": "Team A vs Team B",
+          "storyline": "A compelling 3-4 sentence hype preview for Week ${currentWeek}. Create a story archetype for this battle (e.g. Clash of Titans, Rebound Game, Trap Game)."
+        }
       ]
     }
   `;
@@ -284,7 +299,7 @@ async function generateAiRecap(
     const response = await groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
-        { role: 'system', content: 'You are a helpful assistant that outputs strictly raw JSON.' },
+        { role: 'system', content: 'You are an expert fantasy sports columnist that strictly generates detailed, narrative JSON output.' },
         { role: 'user', content: prompt },
       ],
       response_format: { type: 'json_object' },
